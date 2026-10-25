@@ -59,7 +59,7 @@ export function HierarchyMap({ selected, onSelect, counts }: HierarchyMapProps) 
                   <span className="min-w-0">
                     <span className="block text-sm font-medium">{node.name}</span>
                     <span className="block text-xs text-muted-foreground">
-                      {counts[node.scope]} in catalog
+                      {counts[node.scope] > 0 ? `${counts[node.scope]} in catalog` : "Not in catalog yet"}
                     </span>
                   </span>
                 </button>
