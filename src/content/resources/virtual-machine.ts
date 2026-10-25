@@ -1,3 +1,4 @@
+import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const virtualMachine: ResourceInput = {
@@ -164,7 +165,7 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
 
   simulator: [
     { key: "name", label: "Virtual machine name", type: "text", required: true, default: "vm-web-01" },
-    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: ["southeastasia", "eastasia", "eastus", "westeurope"] },
+    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: regionIds },
     { key: "image", label: "Image", type: "select", required: true, default: "Ubuntu 22.04 LTS", options: ["Ubuntu 22.04 LTS", "Windows Server 2022"] },
     { key: "size", label: "Size", type: "select", required: true, default: "Standard_B2s", options: ["Standard_B1s", "Standard_B2s", "Standard_D2s_v5"] },
   ],

@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-/** Where a resource lives in the Azure hierarchy. */
+/**
+ * The hierarchy level an entry describes. Container entries are their own
+ * level (the Resource Group entry is "resource-group"); every ordinary
+ * service such as a VM or a storage account is "resource".
+ */
 export const scopeSchema = z.enum([
   "tenant",
   "management-group",

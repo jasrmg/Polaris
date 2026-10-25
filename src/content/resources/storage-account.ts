@@ -1,3 +1,4 @@
+import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const storageAccount: ResourceInput = {
@@ -125,7 +126,7 @@ resource sa 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 
   simulator: [
     { key: "name", label: "Storage account name", type: "text", required: true, default: "stpolarisdemo001", help: "3-24 characters, lowercase letters and digits only." },
-    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: ["southeastasia", "eastasia", "eastus", "westeurope"] },
+    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: regionIds },
     { key: "redundancy", label: "Redundancy", type: "select", required: true, default: "Standard_LRS", options: ["Standard_LRS", "Standard_ZRS", "Standard_GRS", "Standard_GZRS"] },
   ],
 };

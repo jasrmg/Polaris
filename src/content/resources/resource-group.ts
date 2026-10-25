@@ -1,3 +1,4 @@
+import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const resourceGroup: ResourceInput = {
@@ -5,7 +6,7 @@ export const resourceGroup: ResourceInput = {
   name: "Resource Group",
   type: "Microsoft.Resources/resourceGroups",
   category: "identity-governance",
-  scope: "subscription",
+  scope: "resource-group",
   icon: "FolderOpen",
 
   tagline: "A folder-like container that holds related Azure resources.",
@@ -105,7 +106,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
       type: "select",
       required: true,
       default: "southeastasia",
-      options: ["southeastasia", "eastasia", "eastus", "westeurope"],
+      options: regionIds,
     },
   ],
 };
