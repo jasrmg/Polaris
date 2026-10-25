@@ -11,13 +11,13 @@ export const storageAccount: ResourceInput = {
 
   tagline: "One account that gives you blobs, files, queues and tables.",
   definition:
-    "A storage account is the top-level namespace for Azure Storage. It gives you a globally unique endpoint and holds your data services: Blob containers, Azure Files shares, Queues and Tables. Performance tier, redundancy and access settings are chosen on the account and apply to everything inside.",
+    "A storage account is the top-level namespace for Azure Storage. It gives you a globally unique account name that forms a separate endpoint for each service, and holds your data services: Blob containers, Azure Files shares, Queues and Tables. The account type and redundancy are set on the account and apply to everything inside.",
   analogy:
     "A storage account is a building with a unique street address. Blobs, file shares, queues and tables are the rooms inside.",
   whenToUse: [
     "Storing unstructured data such as images, backups and logs in Blob storage.",
     "Providing a managed SMB or NFS file share with Azure Files.",
-    "Holding VM diagnostics, boot diagnostics or deployment artifacts.",
+    "Passing messages between application components with Queue storage, or keeping simple NoSQL key-value data in Table storage.",
   ],
   notFor: [
     "Relational data that needs queries and transactions. Use a database service.",
@@ -27,7 +27,7 @@ export const storageAccount: ResourceInput = {
   prerequisites: [
     {
       name: "An Azure subscription",
-      why: "Billing and quota are tracked at the subscription level.",
+      why: "Billing is per subscription. By default you can create up to 250 storage accounts per region in a subscription.",
     },
     {
       name: "A resource group",
@@ -40,11 +40,11 @@ export const storageAccount: ResourceInput = {
     },
     {
       name: "A region",
-      why: "Where your data physically lives. Redundancy options depend on region support.",
+      why: "The primary region for your data. GRS and GZRS also copy it to the paired secondary region, which cannot be changed. Redundancy options depend on region support.",
     },
     {
       name: "A performance tier and redundancy",
-      why: "Standard or Premium, then LRS, ZRS, GRS, RA-GRS, GZRS or RA-GZRS. This decides cost and durability.",
+      why: "Standard or Premium. Standard general-purpose v2 supports LRS, ZRS, GRS, RA-GRS, GZRS and RA-GZRS. Premium accounts support only LRS or ZRS. This decides cost and durability.",
     },
   ],
 
@@ -54,7 +54,7 @@ export const storageAccount: ResourceInput = {
       "Select the Subscription and Resource group.",
       "Enter a globally unique Storage account name, for example stpolarisdemo001.",
       "Choose a Region, Performance (Standard) and Redundancy (LRS is the cheapest).",
-      "On Advanced keep Require secure transfer on and Allow Blob anonymous access off.",
+      "On Security keep Require secure transfer for REST API operations on, and clear Allow enabling anonymous access on individual containers.",
       "Select Review + create, then Create.",
     ],
     cli: `az storage account create \\
@@ -116,11 +116,12 @@ resource sa 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   examNotes: [
     "The account name is global: it must be unique across all of Azure, not just your subscription.",
     "ZRS copies data across availability zones in one region. GRS copies to a paired region. GZRS combines both.",
-    "Changing redundancy later is possible for most paths, but some conversions need a live migration request.",
-    "Access is controlled by Entra ID RBAC, shared access signatures (SAS) and account keys. Prefer RBAC and SAS over keys.",
+    "You can add or remove geo-redundancy in the portal, PowerShell or CLI. Adding or removing zone redundancy needs a conversion, which you can start yourself in most regions or request through support. Some account types need a manual migration.",
+    "Access is controlled by Entra ID RBAC, shared access signatures (SAS) and account keys. Prefer Entra ID, use a user delegation SAS when you need SAS (blobs only), and avoid account keys.",
+    "If you leave out --sku, az storage account create uses Standard_RAGRS, not LRS. The default kind is StorageV2.",
   ],
 
-  related: ["resource-group", "virtual-machine"],
+  related: ["resource-group", "virtual-machine", "service-endpoint", "private-endpoint"],
   docsUrl:
     "https://learn.microsoft.com/azure/storage/common/storage-account-create",
 

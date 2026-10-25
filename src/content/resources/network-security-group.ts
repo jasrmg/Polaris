@@ -19,7 +19,7 @@ export const networkSecurityGroup: ResourceInput = {
     "Making a Standard public IP usable, since it blocks inbound traffic until a rule allows it.",
   ],
   notFor: [
-    "Deep inspection such as URL filtering or intrusion detection. NSGs work on IPs, ports and protocols only; use Azure Firewall or an NVA.",
+    "Deep inspection such as full-path URL filtering or intrusion detection. NSGs work on IPs, ports and protocols only; use Azure Firewall Premium or an NVA.",
   ],
 
   prerequisites: [
@@ -34,7 +34,7 @@ export const networkSecurityGroup: ResourceInput = {
     },
     {
       name: "A region",
-      why: "An NSG can only be associated with subnets and NICs in the same region.",
+      why: "An NSG must be in the same subscription and region as the virtual network of any subnet you associate it with.",
     },
     {
       name: "A subnet or NIC to attach it to",
@@ -50,8 +50,8 @@ export const networkSecurityGroup: ResourceInput = {
       "Enter a Name, for example nsg-web, and choose a Region.",
       "Select Review + create, then Create.",
       "Open the NSG, choose Inbound security rules, then Add.",
-      "Set Source to Service tag Internet, destination port 443, Protocol TCP, Action Allow, Priority 100.",
-      "Choose Subnets, select Associate, and pick vnet-sea and snet-web.",
+      "Set Source to Service Tag and Source service tag to Internet. Set Destination port ranges to 443, Protocol to TCP, Action to Allow and Priority to 100, then select Add.",
+      "Choose Subnets, select + Associate, pick vnet-sea and snet-web, then select OK.",
     ],
     cli: `az network nsg create \\
   --resource-group rg-polaris-demo \\
@@ -145,7 +145,7 @@ New-AzNetworkSecurityGroup \`
   },
   examNotes: [
     "Rule priorities run from 100 to 4096. The lowest number is evaluated first and the first match wins.",
-    "Default rules have priorities 65000 and above and cannot be deleted. Override them with a lower-numbered rule.",
+    "Default rules have priorities 65000, 65001 and 65500 and cannot be deleted. The 65500 rule denies all traffic. Override them with a lower-numbered rule.",
     "With NSGs on both a subnet and a NIC, inbound traffic is checked by the subnet NSG first, then the NIC NSG. Outbound is the reverse. Both must allow it.",
     "NSGs are stateful: if a connection is allowed in one direction, the reply traffic is allowed automatically.",
     "Use Effective security rules on a NIC (or IP flow verify in Network Watcher) to see which rule is actually blocking traffic.",

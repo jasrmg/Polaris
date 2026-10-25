@@ -10,7 +10,7 @@ export const routeTable: ResourceInput = {
 
   tagline: "Custom signposts that override where Azure sends traffic from a subnet.",
   definition:
-    "Azure creates default routes for every subnet so traffic finds its way inside the VNet, to peered VNets and out to the internet. A route table holds user-defined routes (UDRs) that override those defaults. Each route says \"traffic for this address range goes to this next hop\", for example a firewall or NVA. You associate the route table with one or more subnets.",
+    "Azure creates default system routes for every subnet so traffic finds its way between subnets in a VNet and out to the internet. Azure adds more routes when you set up things like peering, a VPN or ExpressRoute gateway, or a service endpoint. A route table holds user-defined routes (UDRs) that override those defaults. Each route says \"traffic for this address range goes to this next hop\", for example a firewall or NVA. You associate the route table with zero or more subnets.",
   analogy:
     "Azure already has road signs. A route table is a roadwork detour sign: \"all traffic to the internet must go through the checkpoint first\".",
   whenToUse: [
@@ -40,7 +40,7 @@ export const routeTable: ResourceInput = {
     {
       name: "A next hop for each route",
       slug: "network-virtual-appliance",
-      why: "For a VirtualAppliance next hop you need the private IP address of the device, and that device must forward traffic.",
+      why: "For a VirtualAppliance next hop you need the private IP address of the device (or of an internal load balancer in front of it). Its network interface must have IP forwarding enabled so it can pass on traffic meant for other addresses.",
     },
   ],
 
@@ -48,10 +48,12 @@ export const routeTable: ResourceInput = {
     portal: [
       "Search for Route tables and select Create.",
       "Select the Resource group, choose a Region and enter a Name such as rt-spoke.",
+      "Leave Propagate gateway routes as Yes, or set it to No to stop routes from a VPN or ExpressRoute gateway being added to the subnet.",
       "Select Review + create, then Create.",
-      "Open the route table, choose Routes, then Add.",
-      "Set Address prefix 0.0.0.0/0, Next hop type Virtual appliance and Next hop address 10.0.2.4.",
-      "Choose Subnets, select Associate, and pick the subnet that should use the route table.",
+      "Open the route table, choose Routes under Settings, then select + Add.",
+      "Enter a Route name, set Destination type to IP Addresses and the destination CIDR range to 0.0.0.0/0.",
+      "Set Next hop type to Virtual appliance and Next hop address to 10.0.2.4, then select Add.",
+      "Choose Subnets under Settings, select + Associate, pick the Virtual network and Subnet, then OK.",
     ],
     cli: `az network route-table create \\
   --resource-group rg-polaris-demo \\
@@ -115,12 +117,15 @@ $vnet | Set-AzVirtualNetwork`,
 }`,
   },
   examNotes: [
-    "Azure picks the route with the longest matching prefix. If prefixes tie, a user-defined route beats BGP, which beats a system route.",
-    "Next hop types: VirtualNetworkGateway, VirtualNetwork, Internet, VirtualAppliance and None. None drops the traffic.",
+    "Azure picks the route with the longest matching prefix. If prefixes are identical, a user-defined route beats BGP, which beats a system route.",
+    "Next hop type names in the CLI, PowerShell, ARM and Bicep: VirtualNetworkGateway, VnetLocal (shown as Virtual network in the portal), Internet, VirtualAppliance and None. None drops the traffic.",
+    "A next hop IP address is only used with the VirtualAppliance type. Deploy the appliance in a different subnet from the resources that route through it, or traffic can loop inside the subnet.",
+    "You cannot set Virtual network peering or VirtualNetworkServiceEndpoint as a next hop in a UDR. Azure adds those routes itself.",
     "One route table can be associated with many subnets, but a subnet has at most one route table.",
     "Peering is not transitive. To let two spokes talk through a hub, add UDRs in the spokes that point at an NVA or firewall in the hub.",
     "Use Effective routes on a NIC, or Next hop in Network Watcher, to see which route a packet really takes.",
-    "Disable BGP route propagation to stop routes learned from a VPN or ExpressRoute gateway from being added to the subnet.",
+    "Set Virtual network gateway route propagation to Disabled (portal), --disable-bgp-route-propagation true (CLI) or disableBgpRoutePropagation: true (Bicep and ARM) to stop routes from a VPN or ExpressRoute gateway being added to the subnet. Do not disable it on GatewaySubnet.",
+    "A route table can only be associated with subnets in the same region and subscription as the route table.",
   ],
 
   related: ["network-virtual-appliance", "vnet-peering", "subnet"],

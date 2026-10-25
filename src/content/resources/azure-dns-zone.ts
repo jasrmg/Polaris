@@ -10,12 +10,12 @@ export const azureDnsZone: ResourceInput = {
 
   tagline: "Hosts the public DNS records for your domain on Azure's name servers.",
   definition:
-    "An Azure DNS public zone holds the DNS records for a domain such as example.com and answers queries about it from the internet. Azure DNS is not a domain registrar. You buy the domain elsewhere, then delegate it to Azure by pointing the registrar at the four name servers Azure gives you.",
+    "An Azure DNS public zone holds the DNS records for a domain such as example.com and answers queries about it from the internet. Azure DNS does not sell domains. You buy one from App Service domains or another registrar, then delegate it to Azure by setting the registrar's name server (NS) records to the four name servers Azure gives you.",
   analogy:
     "A public phone book for your domain. The registrar is the office that lists your name, and the zone is the page that says which number goes with each name.",
   whenToUse: [
     "Hosting DNS for a public domain next to the Azure resources it points at.",
-    "Using alias records so a name follows a public IP, load balancer or Traffic Manager profile when its address changes.",
+    "Using alias records so a name follows an Azure public IP, Traffic Manager profile, Front Door endpoint or CDN endpoint when it changes.",
     "Managing DNS with the same RBAC, templates and tooling as the rest of Azure.",
   ],
   notFor: [
@@ -31,11 +31,11 @@ export const azureDnsZone: ResourceInput = {
     },
     {
       name: "A domain name you own",
-      why: "Bought from a registrar. Examples here use example.com; that name is reserved and will not actually resolve.",
+      why: "You can create a zone for any name, but you must own the domain to delegate it. Examples here use example.com as a placeholder.",
     },
     {
       name: "Delegation at the registrar",
-      why: "Copy the four Azure name servers from the zone's overview page into the registrar's NS settings.",
+      why: "Copy the four Azure name servers from the zone's Overview page into the registrar's NS records.",
     },
   ],
 
@@ -44,9 +44,9 @@ export const azureDnsZone: ResourceInput = {
       "Search for DNS zones and select Create.",
       "Select the Resource group and enter the domain as the Name, for example example.com.",
       "Select Review + create, then Create.",
-      "Open the zone, choose Record sets, then Add.",
-      "Enter Name www, Type A and the IP address, then select OK.",
-      "Copy the four name servers into your registrar's NS settings.",
+      "Open the zone, select Record sets, then + Add.",
+      "Enter Name www, Type A, Alias record set No, and the IP address, then select Add.",
+      "On the zone's Overview page, copy the four name servers into your registrar's NS records.",
     ],
     cli: `az network dns zone create \\
   --resource-group rg-polaris-demo \\
@@ -87,11 +87,13 @@ resource www 'Microsoft.Network/dnsZones/A@2018-05-01' = {
 }`,
   },
   examNotes: [
-    "A DNS zone's location is global. You do not pick a region for it.",
-    "After creating the zone you must delegate the domain by setting the registrar's name servers to the four Azure ones. Until then the zone does not answer public queries.",
+    "A DNS zone is a global service, not bound to a region. The resource group location does not affect it, and Bicep/ARM use location 'global'.",
+    "After creating the zone you must delegate the domain: set the registrar's NS records to all four Azure name servers. Until you do, internet users are not directed to your zone.",
+    "The apex NS and SOA record sets are created automatically. You cannot remove or change the Azure name servers in the apex NS record set.",
     "A record set is all records with the same name and type. A CNAME cannot share a name with other record types, and cannot sit at the zone apex.",
-    "Alias records let an apex name (example.com) point at a public IP or Traffic Manager profile. Use them where a CNAME is not allowed.",
-    "Azure DNS does not register domains. Domains bought through App Service domains can be hosted in Azure DNS.",
+    "Alias records (A, AAAA or CNAME) can point at a Standard SKU public IP, a Traffic Manager profile, a Front Door endpoint, a CDN endpoint, or another record set of the same type in the zone. A load balancer is not a listed target; alias its public IP resource instead.",
+    "Alias records work at the zone apex, where a CNAME is not allowed. They update automatically if the target IP changes and become empty if the target is deleted.",
+    "Azure DNS does not support buying domains. Buy through App Service domains or another registrar, then host the domain in Azure DNS.",
   ],
 
   related: ["private-dns-zone", "public-ip-address"],

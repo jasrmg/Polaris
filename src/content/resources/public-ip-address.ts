@@ -26,7 +26,7 @@ export const publicIpAddress: ResourceInput = {
   prerequisites: [
     {
       name: "An Azure subscription",
-      why: "Public IPs are billed and limited per subscription.",
+      why: "Public IPv4 addresses have a nominal charge, and public IPs are limited per region and per subscription.",
     },
     {
       name: "A resource group",
@@ -39,11 +39,11 @@ export const publicIpAddress: ResourceInput = {
     },
     {
       name: "The Standard SKU",
-      why: "Standard is the current SKU: always static and secure by default. Basic public IPs were retired on 30 September 2025.",
+      why: "Standard is the current SKU: always static and secure by default. Basic public IPs were retired on 30 September 2025. A Standard v2 SKU also exists, but it works only with the Standard v2 NAT gateway. You cannot change the SKU after creation.",
     },
     {
-      name: "A resource to attach it to",
-      why: "A NIC, load balancer, bastion host or NAT gateway. A public IP on its own does nothing.",
+      name: "A resource to associate it with",
+      why: "You create the public IP on its own, then associate it with a resource such as a VM network interface, a public load balancer, a bastion host, a NAT gateway, an application gateway or an Azure Firewall. It has no effect until it is associated.",
     },
   ],
 
@@ -51,8 +51,9 @@ export const publicIpAddress: ResourceInput = {
     portal: [
       "Search for Public IP addresses and select Create.",
       "Select the Subscription and Resource group.",
-      "Enter a Name, for example pip-web-01, and choose a Region.",
-      "Keep the SKU as Standard and the Assignment as Static.",
+      "Choose a Region, then enter a Name, for example pip-web-01.",
+      "Select the SKU Standard. Keep the Tier as Regional and the Availability zone as Zone-redundant.",
+      "The IP address assignment is Static, which is the only option for Standard.",
       "Optionally enter a DNS name label such as polaris-web-01.",
       "Select Review + create, then Create.",
     ],
@@ -88,12 +89,12 @@ export const publicIpAddress: ResourceInput = {
   },
   examNotes: [
     "A Standard public IP is secure by default: inbound traffic is dropped until an NSG rule allows it.",
-    "Standard public IPs are always static. Older exam material that compares Basic and Standard is out of date because Basic was retired.",
-    "The DNS name label becomes label.region.cloudapp.azure.com and must be unique within the region.",
-    "A public IP is a separate resource. Deleting a VM does not always delete its public IP, so check for leftovers and their cost.",
+    "Standard public IPs are always static. Basic SKU public IPs were retired on 30 September 2025, but Learn still describes Basic in comparison tables, so you may see it in older material.",
+    "The DNS name label becomes label.region.cloudapp.azure.com. It must be unique within that Azure region across all subscriptions and all customers.",
+    "By default, deleting a VM leaves its public IP in place. Set the delete option when you create the VM (Delete public IP and NIC when VM is deleted), or remove the public IP yourself, because it keeps costing money.",
   ],
 
-  related: ["network-security-group", "virtual-machine"],
+  related: ["network-security-group", "virtual-machine", "load-balancer", "azure-bastion"],
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-addresses",
 };

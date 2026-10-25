@@ -1,11 +1,15 @@
 import { applicationSecurityGroup } from "./resources/application-security-group";
+import { azureBastion } from "./resources/azure-bastion";
 import { azureDnsZone } from "./resources/azure-dns-zone";
+import { loadBalancer } from "./resources/load-balancer";
 import { networkSecurityGroup } from "./resources/network-security-group";
 import { networkVirtualAppliance } from "./resources/network-virtual-appliance";
 import { privateDnsZone } from "./resources/private-dns-zone";
+import { privateEndpoint } from "./resources/private-endpoint";
 import { publicIpAddress } from "./resources/public-ip-address";
 import { resourceGroup } from "./resources/resource-group";
 import { routeTable } from "./resources/route-table";
+import { serviceEndpoint } from "./resources/service-endpoint";
 import { storageAccount } from "./resources/storage-account";
 import { subnet } from "./resources/subnet";
 import { virtualMachine } from "./resources/virtual-machine";
@@ -33,6 +37,10 @@ const rawResources: ResourceInput[] = [
   networkVirtualAppliance,
   azureDnsZone,
   privateDnsZone,
+  loadBalancer,
+  azureBastion,
+  serviceEndpoint,
+  privateEndpoint,
 ];
 
 /**

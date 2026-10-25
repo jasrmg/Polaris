@@ -3,23 +3,23 @@ import type { ResourceInput } from "../schema";
 export const networkVirtualAppliance: ResourceInput = {
   slug: "network-virtual-appliance",
   name: "Network Virtual Appliance",
-  type: "Microsoft.Compute/virtualMachines (with IP forwarding)",
+  type: "Microsoft.Network/networkInterfaces (IP forwarding enabled)",
   category: "networking",
   scope: "resource",
   icon: "Router",
 
   tagline: "A VM that acts as a firewall or router in the middle of your traffic.",
   definition:
-    "A network virtual appliance (NVA) is a virtual machine that runs networking software such as a firewall, router or WAN optimizer, often from a third-party vendor in the Azure Marketplace. Azure does not treat it as a special resource. It is a normal VM with IP forwarding turned on, placed in the path of traffic by a route table.",
+    "A network virtual appliance (NVA) is a virtual machine that runs a network application such as a firewall, WAN optimization or load balancing software. Ready-to-deploy NVAs from partners are in the Azure Marketplace. There is no single NVA resource type in Azure. It is a normal VM whose network interface (Microsoft.Network/networkInterfaces) has IP forwarding enabled, usually placed in the path of traffic by a route table.",
   analogy:
     "A security checkpoint on the road. Traffic is not meant to end there. It stops, gets inspected, and carries on if it passes.",
   whenToUse: [
     "Inspecting or filtering traffic between VNets, or between a VNet and the internet, with a vendor firewall you already use.",
-    "Connecting to an on-premises device or service that Azure has no built-in equivalent for.",
+    "Ending VPN or SD-WAN tunnels from external locations with an appliance from your vendor.",
   ],
   notFor: [
-    "Simple allow and deny rules. A network security group is free and enough.",
-    "Cases where a managed service works. Azure Firewall needs no VM patching or scaling.",
+    "Simple allow and deny rules. A network security group has no cost and can filter traffic in and out of subnets and NICs.",
+    "Cases where a managed service works. Azure Firewall is a managed firewall service with built-in high availability and scalability, and Learn also calls it an Azure-native NVA.",
   ],
 
   prerequisites: [
@@ -30,17 +30,17 @@ export const networkVirtualAppliance: ResourceInput = {
     },
     {
       name: "IP forwarding on the network interface",
-      why: "Without it Azure drops packets that are not addressed to the VM itself. You must also enable forwarding inside the guest OS.",
+      why: "Without it Azure drops packets that are not addressed to the VM itself. This is an Azure setting, and you might also need to enable IP forwarding inside the VM's operating system.",
     },
     {
       name: "A route table that points at the NVA",
       slug: "route-table",
-      why: "Traffic only flows through the NVA if a UDR names its private IP as the next hop.",
+      why: "Traffic only flows through the NVA if a UDR uses next hop type Virtual appliance with the private IP of the NVA's network interface.",
     },
     {
       name: "A subnet for the NVA",
       slug: "subnet",
-      why: "The NVA usually sits in its own subnet, for example in the hub VNet.",
+      why: "In Learn's examples the NVA sits in its own subnet, for example in the hub VNet.",
     },
   ],
 
@@ -49,9 +49,9 @@ export const networkVirtualAppliance: ResourceInput = {
       "Create the VM that will be the appliance, for example nva-hub-01, in a subnet of the hub VNet.",
       "Open the VM, choose Networking, select the network interface, then IP configurations.",
       "Set IP forwarding to Enabled and select Save.",
-      "Inside the VM, enable IP forwarding in the operating system.",
-      "Create a route table with a route whose next hop type is Virtual appliance and whose next hop address is the VM's private IP.",
-      "Associate the route table with the subnets whose traffic should be inspected.",
+      "Check the appliance software, and if needed enable IP forwarding inside the VM's operating system.",
+      "Create a route table, then under Routes select + Add. Set Next hop type to Virtual appliance and Next hop address to the VM's private IP.",
+      "Under the virtual network's Subnets, associate the route table with each subnet whose traffic should be inspected.",
     ],
     cli: `az network nic update \\
   --resource-group rg-polaris-demo \\
@@ -92,14 +92,14 @@ $nic | Set-AzNetworkInterface`,
 }`,
   },
   examNotes: [
-    "IP forwarding must be enabled on the NVA's network interface in Azure and also inside the guest operating system.",
-    "A UDR with next hop type VirtualAppliance and the NVA's private IP is what sends traffic through it. Use a static private IP so the route never goes stale.",
-    "When the NVA is in a peered VNet, the peering needs Allow forwarded traffic on the link that carries the forwarded traffic.",
-    "To make an NVA highly available, put two behind an internal Standard load balancer with HA ports.",
+    "IP forwarding is an Azure setting on each NIC that forwards traffic. The VM must also run an application that can forward the traffic, and you might need to enable forwarding in the guest OS.",
+    "A UDR with next hop type VirtualAppliance and the private IP of the NVA's network interface is what sends traffic through it. Learn also uses Virtual appliance for Azure Firewall, a managed service, with the firewall's private IP.",
+    "When the NVA is in a hub, the peerings must be configured to accept forwarded traffic (Allow forwarded traffic).",
+    "To make an NVA highly available, run at least two behind an internal Standard Load Balancer with an HA ports rule.",
     "If traffic does not pass, check Effective routes, the NVA's NSG and Next hop in Network Watcher before blaming the appliance.",
   ],
 
-  related: ["route-table", "vnet-peering", "virtual-machine"],
+  related: ["route-table", "vnet-peering", "virtual-machine", "load-balancer"],
   docsUrl:
-    "https://learn.microsoft.com/azure/architecture/reference-architectures/dmz/nva-ha",
+    "https://learn.microsoft.com/azure/virtual-network/virtual-network-network-interface",
 };

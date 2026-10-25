@@ -11,7 +11,7 @@ export const resourceGroup: ResourceInput = {
 
   tagline: "A folder-like container that holds related Azure resources.",
   definition:
-    "A resource group is a logical container for Azure resources that share the same lifecycle: you deploy, update, secure and delete them together. Every resource must live in exactly one resource group. The group stores metadata about its resources in a region you choose, but the resources inside can be in other regions.",
+    "A resource group is a logical container for Azure resources that share the same lifecycle: you deploy, update, secure and delete them together. Every resource you deploy to a resource group lives in exactly one group. A few resource types are deployed at the subscription, management group or tenant instead. The group stores metadata about its resources in a region you choose, but the resources inside can be in other regions.",
   analogy:
     "Think of a project folder on your computer. Delete the folder and everything inside goes with it.",
   whenToUse: [
@@ -45,7 +45,7 @@ export const resourceGroup: ResourceInput = {
       "Pick the Subscription.",
       "Enter a Resource group name, for example rg-polaris-demo.",
       "Choose a Region.",
-      "On the Tags tab add tags such as env=dev and owner=you.",
+      "Optionally add tags such as env=dev and owner=you.",
       "Select Review + create, then Create.",
     ],
     cli: `az group create \\
@@ -88,10 +88,11 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
 }`,
   },
   examNotes: [
-    "Deploying a resource group from Bicep or ARM is a subscription-scope deployment: use az deployment sub create, not az deployment group create.",
+    "Deploying a resource group from Bicep or ARM is a subscription-scope deployment. Use az deployment sub create with --location, not az deployment group create.",
     "Tags on a resource group are not inherited by its resources unless you assign an Azure Policy such as Inherit a tag from the resource group.",
-    "Moving a resource to another group changes its group but not its location.",
-    "A resource lock (CanNotDelete or ReadOnly) on a group applies to every resource inside it.",
+    "Moving a resource to another group changes its resource ID and its group, but not its location. A ReadOnly lock on the source or destination group blocks the move.",
+    "A resource lock (CanNotDelete or ReadOnly) on a group applies to every resource inside it, and the most restrictive lock in the chain wins.",
+    "You cannot rename a resource group after you create it, and you cannot nest resource groups.",
   ],
 
   related: ["virtual-machine", "storage-account", "virtual-network"],

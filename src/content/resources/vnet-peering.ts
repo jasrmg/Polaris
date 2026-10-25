@@ -10,7 +10,7 @@ export const vnetPeering: ResourceInput = {
 
   tagline: "A private link between two VNets, in the same region or across regions.",
   definition:
-    "VNet peering connects two virtual networks so resources in each can reach the other using private IP addresses. The traffic stays on the Microsoft backbone network. Peering within one region is called regional peering, and peering between regions (for example Southeast Asia and East Asia) is called global peering. A peering is made of two links, one in each VNet.",
+    "VNet peering connects two virtual networks so resources in each can reach the other using private IP addresses. The traffic stays on the Microsoft backbone network, with no public internet, gateway or encryption needed between the VNets. Virtual network peering connects VNets in the same region, and global virtual network peering connects VNets in different regions (for example Southeast Asia and East Asia). A peering needs a link configured in each VNet.",
   analogy:
     "A private corridor between two buildings. Both buildings must agree to open their end of the corridor, and the corridor only joins those two buildings. It does not join their neighbours.",
   whenToUse: [
@@ -19,8 +19,8 @@ export const vnetPeering: ResourceInput = {
     "Building hub-and-spoke networks where spokes share a gateway or firewall in the hub.",
   ],
   notFor: [
-    "VNets with overlapping address spaces. Peering will not be created.",
-    "Transitive connectivity. If A peers with B and B peers with C, A cannot reach C without extra routing.",
+    "VNets with overlapping address spaces. Peered VNets must have nonoverlapping IP address spaces.",
+    "Transitive connectivity. If A peers with B and B peers with C, A cannot reach C unless you peer A and C directly or route through an NVA in the hub.",
   ],
 
   prerequisites: [
@@ -31,7 +31,7 @@ export const vnetPeering: ResourceInput = {
     },
     {
       name: "Non-overlapping address spaces",
-      why: "For example 10.1.0.0/16 and 10.2.0.0/16. Overlapping ranges cannot be peered.",
+      why: "For example 10.1.0.0/16 and 10.2.0.0/16. The VNets you peer must have nonoverlapping IP address spaces.",
     },
     {
       name: "A peering link in each direction",
@@ -40,17 +40,17 @@ export const vnetPeering: ResourceInput = {
     },
     {
       name: "Permission on both VNets",
-      why: "You need network contributor rights on both sides, which matters when the VNets are in different subscriptions.",
+      why: "Your account needs the Network Contributor role, or a custom role with the virtualNetworkPeerings actions, on the VNets you create links for. For VNets in different Microsoft Entra tenants, add a guest user from each tenant to the other.",
     },
   ],
 
   example: {
     portal: [
-      "Open the first virtual network (vnet-sea) and select Peerings, then Add.",
-      "Name the link from this network, for example sea-to-ea.",
-      "Choose the remote virtual network (vnet-ea) and name the link from the remote network, for example ea-to-sea.",
-      "Keep Allow access to remote virtual network enabled for both links.",
-      "Select Add. The peering status should change to Connected.",
+      "Open the first virtual network (vnet-sea), select Peerings under Settings, then select + Add.",
+      "Under Remote virtual network summary, name the link in the remote network (for example ea-to-sea) and select the remote virtual network (vnet-ea).",
+      "Under Local virtual network summary, name the link in this network, for example sea-to-ea.",
+      "Keep the defaults: access between the networks is allowed in both directions, and forwarded traffic, gateway transit and remote gateway options are cleared.",
+      "Select Add. The portal creates both links. Select Refresh and the peering status changes from Updating to Connected.",
     ],
     cli: `az network vnet peering create \\
   --resource-group rg-polaris-demo \\
@@ -119,12 +119,14 @@ resource eaToSea 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2023-
 }`,
   },
   examNotes: [
-    "Peering is non-transitive. Reaching a third network needs another peering, or a UDR to an NVA or firewall.",
-    "A peering has two links. The status is Initiated until the second link exists, then Connected.",
-    "Regional peering is within one region. Global peering crosses regions. Both use private IPs over the Microsoft backbone.",
-    "Address spaces must not overlap. If you change an address space later, sync the peering.",
-    "Allow forwarded traffic must be on for traffic that an NVA in the peered VNet forwards on behalf of other sources.",
-    "Gateway transit lets a spoke use the hub's VPN gateway. The spoke sets Use remote gateways, and the hub sets Allow gateway transit. A VNet with its own gateway cannot use remote gateways.",
+    "Peering is non-transitive. Reaching a third network needs a direct peering, or routing through an NVA in the hub.",
+    "A peering needs a link in each VNet. The first link shows Initiated, and both show Connected once the second link exists. Traffic does not flow until both are Connected.",
+    "Virtual network peering is within one region. Global virtual network peering crosses regions. Both keep traffic on the Microsoft backbone and both support gateway transit.",
+    "Address spaces must not overlap. After you resize the address space of a peered VNet, the peers must sync with the change (portal or PowerShell).",
+    "Global peering limit: resources cannot reach the front-end IP of a Basic load balancer in a globally peered VNet. Standard Load Balancer works over both kinds of peering.",
+    "Allow forwarded traffic lets a VNet receive traffic that did not originate in the peered VNet, such as traffic sent by an NVA there. It does not create the UDR or the NVA.",
+    "Gateway transit lets a spoke use the hub's gateway. The hub link enables Allow gateway transit, the spoke link enables Use remote gateways. A VNet that has its own gateway cannot use a remote gateway.",
+    "Peering does not resolve names across VNets with default Azure DNS. Use Azure Private DNS or a custom DNS server.",
   ],
 
   related: ["virtual-network", "network-virtual-appliance", "private-dns-zone"],

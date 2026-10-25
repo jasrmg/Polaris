@@ -20,7 +20,7 @@ export const virtualNetwork: ResourceInput = {
   ],
   notFor: [
     "Spanning more than one region. A VNet lives in one region; connect regions with peering.",
-    "Hosting resources that are fully managed and public by design, such as a plain storage account, unless you add a private endpoint.",
+    "Hosting resources that are fully managed and public by design, such as a plain storage account, unless you add a private endpoint or a service endpoint.",
   ],
 
   prerequisites: [
@@ -42,20 +42,20 @@ export const virtualNetwork: ResourceInput = {
       why: "Pick a private range such as 10.1.0.0/16. Ranges that overlap with a VNet you want to peer or connect later will block the connection.",
     },
     {
-      name: "At least one subnet",
+      name: "A subnet for your resources",
       slug: "subnet",
-      why: "Resources attach to subnets, not to the VNet directly. The portal creates a default one.",
+      why: "Resources attach to subnets, not to the VNet directly. The portal makes you define one subnet when you create the VNet, but a VNet does not have to have any subnets.",
       autoCreated: true,
     },
   ],
 
   example: {
     portal: [
-      "Search for Virtual networks and select Create.",
+      "Search for Virtual networks and select + Create.",
       "Select the Subscription and Resource group.",
       "Enter a Name, for example vnet-sea, and choose a Region.",
-      "On IP addresses set the address space to 10.1.0.0/16.",
-      "Add a subnet named snet-web with the range 10.1.1.0/24.",
+      "On IP addresses, set the address space to 10.1.0.0/16.",
+      "Select the default subnet, change its Name to snet-web and its range to 10.1.1.0/24, then select Save.",
       "Select Review + create, then Create.",
     ],
     cli: `az network vnet create \\
@@ -86,14 +86,14 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-09-01' = {
         '10.1.0.0/16'
       ]
     }
-    subnets: [
-      {
-        name: 'snet-web'
-        properties: {
-          addressPrefix: '10.1.1.0/24'
-        }
-      }
-    ]
+  }
+}
+
+resource subnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' = {
+  parent: vnet
+  name: 'snet-web'
+  properties: {
+    addressPrefix: '10.1.1.0/24'
   }
 }`,
     arm: `{
@@ -125,10 +125,17 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-09-01' = {
     "A VNet belongs to one region and one subscription. It can span all availability zones in that region.",
     "Address spaces of VNets that you peer or join with a VPN must not overlap.",
     "Azure reserves 5 IP addresses in every subnet: the first four and the last one.",
-    "By default resources in different subnets of the same VNet can talk to each other. Use NSGs to restrict that, not extra subnets.",
-    "You can add address ranges to a VNet later. If the VNet is peered, sync the peering afterwards.",
+    "By default, resources in different subnets of the same VNet can talk to each other. Use network security groups to filter that traffic.",
+    "You can add address ranges to a VNet later. If the VNet is peered, sync the peering after every resize. The new range must not overlap a peered or on-premises network. Resizing is not supported when the peer is a classic VNet.",
+    "In Bicep, Learn recommends defining subnets as child resources instead of inside the VNet resource. The ARM example lists them inline, which is what an exported template looks like.",
   ],
 
-  related: ["subnet", "vnet-peering", "network-security-group", "private-dns-zone"],
+  related: [
+    "subnet",
+    "vnet-peering",
+    "network-security-group",
+    "private-dns-zone",
+    "azure-bastion",
+  ],
   docsUrl: "https://learn.microsoft.com/azure/virtual-network/quick-create-portal",
 };

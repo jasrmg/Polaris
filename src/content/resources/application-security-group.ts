@@ -18,7 +18,7 @@ export const applicationSecurityGroup: ResourceInput = {
     "Scaling a tier up or down without touching the NSG.",
   ],
   notFor: [
-    "Grouping resources across regions or VNets. All NICs in an ASG must be in the same VNet.",
+    "Grouping network interfaces from different VNets. All NICs in an ASG must be in the same VNet as the first NIC added.",
     "Anything that is not a rule source or destination. An ASG is not a general-purpose tag.",
   ],
 
@@ -36,7 +36,7 @@ export const applicationSecurityGroup: ResourceInput = {
     {
       name: "A VM (network interface) to add to the group",
       slug: "virtual-machine",
-      why: "Membership is set on the NIC. All members must be in the same virtual network.",
+      why: "Membership is set on the VM's network interface. All members must be in the same virtual network.",
     },
   ],
 
@@ -45,9 +45,10 @@ export const applicationSecurityGroup: ResourceInput = {
       "Search for Application security groups and select Create.",
       "Select the Resource group, enter a Name such as asg-web, and choose a Region.",
       "Create a second group named asg-db.",
-      "Open a VM, choose Networking, then Application security groups, and select asg-web.",
-      "In your NSG, add an inbound rule with Source set to Application security group asg-web.",
-      "Set Destination to Application security group asg-db, port 1433, Action Allow.",
+      "Open a VM, expand Networking, select Application security groups, then Add application security groups and pick asg-web.",
+      "In your NSG, open Inbound security rules and select + Add.",
+      "Set Source to Application security group and select asg-web.",
+      "Set Destination to Application security group and select asg-db, Destination port ranges 1433, Protocol TCP, Action Allow.",
     ],
     cli: `az network asg create \\
   --resource-group rg-polaris-demo \\
@@ -139,7 +140,8 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-09-01' = {
   examNotes: [
     "An ASG is attached to a network interface, not to a subnet.",
     "All network interfaces in one ASG must be in the same virtual network.",
-    "A rule can use an ASG as source and destination, but both ASGs must be in the same VNet.",
+    "A rule can use an ASG as both source and destination, but the NICs in both ASGs must be in the same VNet.",
+    "A NIC can be in more than one ASG, up to the Azure limit.",
     "ASGs let you add a VM to a tier by changing its NIC, with no edits to the NSG.",
   ],
 
