@@ -1,3 +1,8 @@
+import { appService } from "./resources/app-service";
+import { appServicePlan } from "./resources/app-service-plan";
+import { containerApps } from "./resources/container-apps";
+import { containerInstances } from "./resources/container-instances";
+import { virtualMachineScaleSet } from "./resources/virtual-machine-scale-set";
 import { applicationSecurityGroup } from "./resources/application-security-group";
 import { azureBastion } from "./resources/azure-bastion";
 import { azureDnsZone } from "./resources/azure-dns-zone";
@@ -25,6 +30,11 @@ import {
 const rawResources: ResourceInput[] = [
   resourceGroup,
   virtualMachine,
+  virtualMachineScaleSet,
+  appServicePlan,
+  appService,
+  containerInstances,
+  containerApps,
   storageAccount,
   // Networking
   virtualNetwork,

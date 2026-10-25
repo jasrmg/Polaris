@@ -232,6 +232,6 @@ resource lb 'Microsoft.Network/loadBalancers@2023-09-01' = {
     "For outbound internet access Learn ranks NAT Gateway best, then an instance-level public IP, then load balancer outbound rules. Outbound rules need a Standard public load balancer. Default outbound access is not recommended.",
   ],
 
-  related: ["public-ip-address", "virtual-machine", "network-security-group", "network-virtual-appliance"],
+  related: ["public-ip-address", "virtual-machine", "network-security-group", "network-virtual-appliance", "virtual-machine-scale-set"],
   docsUrl: "https://learn.microsoft.com/azure/load-balancer/load-balancer-overview",
 };

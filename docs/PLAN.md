@@ -174,7 +174,9 @@ These are starting points, not verified facts. Each rule must be checked against
 | 5 | Detail modal and static resource pages | Done |
 | 6 | 10 networking resources and the snippet checker | Done |
 | 7 | Load Balancer, Bastion, Service Endpoint, Private Endpoint, and a Learn verification pass over all 17 entries | Done, **but see note** |
-| 8 | Compute | Next |
+| 8 | Compute: VM Scale Set, App Service Plan, App Service, Container Instances, Container Apps (22 entries total). Also fixed long unbroken words stretching the detail page on phones. | Done, waiting for commit |
 | 9-17 | See roadmap | Not started |
 
-**Note on checkpoint 7:** the commit `feat(content): add Load Balancer, Bastion, Service and Private Endpoint` modified `src/content/index.ts` to import four new files that were not added to the commit: `azure-bastion.ts`, `load-balancer.ts`, `private-endpoint.ts`, `service-endpoint.ts` (all in `src/content/resources/`). Until they are committed, a fresh clone will not build. Stage them (`git add src/content/resources`) and commit, or amend, before starting checkpoint 8. Delete this note once done.
+**Lesson from checkpoint 7:** a commit once left four new content files untracked while `index.ts` imported them, which breaks a fresh clone. Run `git status` before every commit and stage new files.
+
+**Decision made in checkpoint 8:** App Service Plan and App Service (Web App) are two separate entries, because the exam treats scaling, tiers and slots separately.

@@ -92,7 +92,7 @@ export function ResourceDetail({ resource, onOpenResource }: ResourceDetailProps
               {resource.whenToUse.map((item) => (
                 <li key={item} className="flex gap-2">
                   <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-                  <span>{item}</span>
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{item}</span>
                 </li>
               ))}
             </ul>
@@ -106,7 +106,7 @@ export function ResourceDetail({ resource, onOpenResource }: ResourceDetailProps
                 {resource.notFor.map((item) => (
                   <li key={item} className="flex gap-2">
                     <X className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
-                    <span>{item}</span>
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{item}</span>
                   </li>
                 ))}
               </ul>
@@ -172,7 +172,7 @@ export function ResourceDetail({ resource, onOpenResource }: ResourceDetailProps
                     <Badge variant="outline">Created for you in the portal</Badge>
                   )}
                 </div>
-                <p className="mt-1 text-muted-foreground">{p.why}</p>
+                <p className="mt-1 text-muted-foreground min-w-0 [overflow-wrap:anywhere]">{p.why}</p>
               </div>
             </li>
           ))}
@@ -199,7 +199,7 @@ export function ResourceDetail({ resource, onOpenResource }: ResourceDetailProps
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium">
                     {i + 1}
                   </span>
-                  <span className="pt-0.5">{step}</span>
+                  <span className="pt-0.5 min-w-0 [overflow-wrap:anywhere]">{step}</span>
                 </li>
               ))}
             </ol>
@@ -229,7 +229,7 @@ export function ResourceDetail({ resource, onOpenResource }: ResourceDetailProps
             {resource.examNotes.map((note) => (
               <li key={note} className="flex gap-2 rounded-lg border bg-card p-3">
                 <CircleHelp className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-                <span>{note}</span>
+                <span className="min-w-0 [overflow-wrap:anywhere]">{note}</span>
               </li>
             ))}
           </ul>
