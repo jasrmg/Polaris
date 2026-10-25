@@ -94,7 +94,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
     "A resource lock (CanNotDelete or ReadOnly) on a group applies to every resource inside it.",
   ],
 
-  related: ["virtual-machine", "storage-account"],
+  related: ["virtual-machine", "storage-account", "virtual-network"],
   docsUrl:
     "https://learn.microsoft.com/azure/azure-resource-manager/management/manage-resource-groups-portal",
 

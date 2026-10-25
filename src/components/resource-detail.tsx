@@ -179,8 +179,10 @@ export function ResourceDetail({ resource, onOpenResource }: ResourceDetailProps
         </ol>
       </TabsContent>
 
-      <TabsContent value="configure" className="grid gap-4">
-        <Tabs defaultValue="portal" className="gap-3">
+      {/* minmax(0, 1fr): without it a long code line widens the grid column
+          past the screen instead of scrolling inside the code block. */}
+      <TabsContent value="configure" className="grid grid-cols-[minmax(0,1fr)] gap-4">
+        <Tabs defaultValue="portal" className="min-w-0 gap-3">
           <TabsList className={tabsListClass}>
             <TabsTrigger value="portal" className="flex-none px-3 py-1">Portal</TabsTrigger>
             {snippets.map((s) => (

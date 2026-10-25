@@ -1,6 +1,16 @@
+import { applicationSecurityGroup } from "./resources/application-security-group";
+import { azureDnsZone } from "./resources/azure-dns-zone";
+import { networkSecurityGroup } from "./resources/network-security-group";
+import { networkVirtualAppliance } from "./resources/network-virtual-appliance";
+import { privateDnsZone } from "./resources/private-dns-zone";
+import { publicIpAddress } from "./resources/public-ip-address";
 import { resourceGroup } from "./resources/resource-group";
+import { routeTable } from "./resources/route-table";
 import { storageAccount } from "./resources/storage-account";
+import { subnet } from "./resources/subnet";
 import { virtualMachine } from "./resources/virtual-machine";
+import { virtualNetwork } from "./resources/virtual-network";
+import { vnetPeering } from "./resources/vnet-peering";
 import {
   resourceSchema,
   type Category,
@@ -12,6 +22,17 @@ const rawResources: ResourceInput[] = [
   resourceGroup,
   virtualMachine,
   storageAccount,
+  // Networking
+  virtualNetwork,
+  subnet,
+  publicIpAddress,
+  networkSecurityGroup,
+  applicationSecurityGroup,
+  routeTable,
+  vnetPeering,
+  networkVirtualAppliance,
+  azureDnsZone,
+  privateDnsZone,
 ];
 
 /**

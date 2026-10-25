@@ -1,13 +1,22 @@
 import {
+  BookOpen,
   Boxes,
   Building2,
   Cloud,
   CreditCard,
   Database,
   FolderOpen,
+  Globe,
   Layers,
+  LayoutGrid,
+  Link2,
+  Lock,
   Network,
+  Route,
+  Router,
   Server,
+  ShieldCheck,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -17,15 +26,24 @@ import {
  * resource needs a new icon.
  */
 const icons: Record<string, LucideIcon> = {
+  BookOpen,
   Boxes,
   Building2,
   Cloud,
   CreditCard,
   Database,
   FolderOpen,
+  Globe,
   Layers,
+  LayoutGrid,
+  Link2,
+  Lock,
   Network,
+  Route,
+  Router,
   Server,
+  ShieldCheck,
+  Users,
 };
 
 export function ResourceIcon({

@@ -36,6 +36,7 @@ export const virtualMachine: ResourceInput = {
     },
     {
       name: "A virtual network and subnet",
+      slug: "virtual-network",
       why: "The VM's network interface is attached to a subnet. The portal can create one for you.",
       autoCreated: true,
     },
@@ -159,7 +160,13 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
     "To get ARM from an existing VM, use Export template on the resource group, then az bicep decompile to convert it to Bicep.",
   ],
 
-  related: ["resource-group", "storage-account"],
+  related: [
+    "resource-group",
+    "storage-account",
+    "virtual-network",
+    "network-security-group",
+    "public-ip-address",
+  ],
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-machines/windows/quick-create-portal",
 
