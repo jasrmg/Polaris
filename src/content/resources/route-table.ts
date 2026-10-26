@@ -128,7 +128,7 @@ $vnet | Set-AzVirtualNetwork`,
     "A route table can only be associated with subnets in the same region and subscription as the route table.",
   ],
 
-  related: ["network-virtual-appliance", "vnet-peering", "subnet"],
+  related: ["network-virtual-appliance", "vnet-peering", "subnet", "network-watcher"],
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-network/virtual-networks-udr-overview",
 };

@@ -76,13 +76,14 @@ Batching tip: verification of several entries can be split across read-only suba
 - Start the dev server outside the sandbox and in the background. Stop it with `pkill -f "next dev"`.
 - Browser testing: CDP scripts in the Cursor browser. The pane is small, so use iframes at a fixed width (for example 390px) to test phone layouts.
 
-## 5. Current catalog (22 entries)
+## 5. Current catalog (29 entries)
 
 | Category | Entries |
 |---|---|
 | Identity & Governance | Resource Group |
 | Compute (6) | Virtual Machine, Virtual Machine Scale Set, App Service Plan, App Service (Web App), Container Instances, Container Apps |
-| Storage | Storage Account |
+| Storage (3) | Storage Account, Blob Container, Azure Files Share |
+| Monitor & Backup (5) | Log Analytics Workspace, Azure Monitor Alert Rule, Action Group, Network Watcher, Recovery Services Vault |
 | Networking (14) | Virtual Network, Subnet, Public IP Address, Network Security Group, Application Security Group, Route Table, Virtual Network Peering, Network Virtual Appliance, Azure DNS Zone, Private DNS Zone, Load Balancer, Azure Bastion, Service Endpoint, Private Endpoint |
 
 The hierarchy map still shows Tenant, Management group and Subscription as "Not in catalog yet".
@@ -99,12 +100,12 @@ Checkpoints 1-8 (see the status log): scaffold, theming, schema, home page, moda
 
 ### Next
 
-**Checkpoint 9 - Storage, monitoring, backup** *(next, last pure-catalog checkpoint before the redesign)*
+**Checkpoint 9 - Storage, monitoring, backup** *(done)*
 - Storage: Blob container, Azure Files share (SMB / NFS, tiers), plus notes on SAS, access tiers, lifecycle management and replication.
 - Monitor & Backup: Log Analytics workspace, Azure Monitor alert rule (and action group), Network Watcher (connection monitor, IP flow verify, next hop), Recovery Services vault (backup policy, soft delete).
 - Verify every claim against Learn, snippet checker, browser sweep.
 
-**Checkpoint 10 - Design the sandbox (documents and decisions, no UI)**
+**Checkpoint 10 - Design the sandbox (documents and decisions, no UI)** *(next)*
 - `docs/SIMULATOR.md`: the world model (tenant > directory > management groups > subscriptions > resource groups > resources, role assignments, locks, policy assignments), lifecycle states, validation, persistence format and versioning, tiers of fidelity (section 12).
 - `docs/RBAC.md`: role definition and assignment model, scope inheritance, action wildcard matching, notActions, dataActions, deny assignments, custom roles, how Entra directory roles are kept separate. Every rule cites Learn.
 - `docs/CLOUDSHELL.md`: command grammar, which `az` command groups ship first, output formats, `--query`, error messages, session state (`az login`, `az account set`, defaults).
@@ -202,8 +203,9 @@ These are starting points, not verified facts. Each rule must be checked against
 | 6 | 10 networking resources and the snippet checker | Done |
 | 7 | Load Balancer, Bastion, Service Endpoint, Private Endpoint, and a Learn verification pass over all 17 entries | Done |
 | 8 | Compute: VM Scale Set, App Service Plan, App Service, Container Instances, Container Apps (22 entries total). Also fixed long unbroken words stretching the detail page on phones. | Done, waiting for commit |
-| 9 | Storage, monitoring, backup | Next |
-| 10-20 | See roadmap in section 6 | Not started |
+| 9 | Storage and monitor and backup: Blob Container, Azure Files Share, Log Analytics Workspace, Alert Rule, Action Group, Network Watcher, Recovery Services Vault (29 entries total) | Done, waiting for commit |
+| 10 | Design the sandbox (documents only) | Next |
+| 11-20 | See roadmap in section 6 | Not started |
 
 **Lesson from checkpoint 7:** a commit once left four new content files untracked while `index.ts` imported them, which breaks a fresh clone. Run `git status` before every commit and stage new files.
 

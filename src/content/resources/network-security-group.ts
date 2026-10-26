@@ -152,7 +152,7 @@ New-AzNetworkSecurityGroup \`
     "Rules can use service tags (Internet, VirtualNetwork, AzureLoadBalancer, Storage) and application security groups instead of raw IP ranges.",
   ],
 
-  related: ["subnet", "application-security-group", "public-ip-address"],
+  related: ["subnet", "application-security-group", "public-ip-address", "network-watcher"],
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-network/network-security-groups-overview",
 };

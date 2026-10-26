@@ -1,3 +1,10 @@
+import { actionGroup } from "./resources/action-group";
+import { alertRule } from "./resources/alert-rule";
+import { blobContainer } from "./resources/blob-container";
+import { fileShare } from "./resources/file-share";
+import { logAnalyticsWorkspace } from "./resources/log-analytics-workspace";
+import { networkWatcher } from "./resources/network-watcher";
+import { recoveryServicesVault } from "./resources/recovery-services-vault";
 import { appService } from "./resources/app-service";
 import { appServicePlan } from "./resources/app-service-plan";
 import { containerApps } from "./resources/container-apps";
@@ -36,6 +43,14 @@ const rawResources: ResourceInput[] = [
   containerInstances,
   containerApps,
   storageAccount,
+  blobContainer,
+  fileShare,
+  // Monitor & backup
+  logAnalyticsWorkspace,
+  alertRule,
+  actionGroup,
+  networkWatcher,
+  recoveryServicesVault,
   // Networking
   virtualNetwork,
   subnet,

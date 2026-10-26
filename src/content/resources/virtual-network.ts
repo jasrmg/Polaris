@@ -133,6 +133,7 @@ resource subnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' = {
   related: [
     "subnet",
     "vnet-peering",
+    "network-watcher",
     "network-security-group",
     "private-dns-zone",
     "azure-bastion",

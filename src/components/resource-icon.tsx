@@ -1,4 +1,11 @@
 import {
+  Archive,
+  BellRing,
+  DatabaseBackup,
+  Files,
+  Radar,
+  ScrollText,
+  Send,
   BookOpen,
   Boxes,
   Building2,
@@ -31,6 +38,13 @@ import {
  * resource needs a new icon.
  */
 const icons: Record<string, LucideIcon> = {
+  Archive,
+  BellRing,
+  DatabaseBackup,
+  Files,
+  Radar,
+  ScrollText,
+  Send,
   BookOpen,
   Boxes,
   Building2,

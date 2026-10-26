@@ -121,7 +121,7 @@ resource sa 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     "If you leave out --sku, az storage account create uses Standard_RAGRS, not LRS. The default kind is StorageV2.",
   ],
 
-  related: ["resource-group", "virtual-machine", "service-endpoint", "private-endpoint"],
+  related: ["resource-group", "virtual-machine", "blob-container", "file-share", "service-endpoint", "private-endpoint"],
   docsUrl:
     "https://learn.microsoft.com/azure/storage/common/storage-account-create",
 

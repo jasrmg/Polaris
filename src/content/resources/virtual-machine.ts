@@ -168,6 +168,8 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
     "public-ip-address",
     "virtual-machine-scale-set",
     "container-instances",
+    "recovery-services-vault",
+    "network-watcher",
   ],
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-machines/linux/quick-create-portal",
