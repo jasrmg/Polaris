@@ -1,38 +1,76 @@
-# Polaris: Azure Resource Atlas - Plan
+# Polaris - Plan
 
-Living document. Update the **Status** section at the end of every checkpoint.
-If you are picking this project up cold (human or AI), read this file first, then `AGENTS.md`.
+Living document. **If you are an AI or a person picking this project up cold, read section 0 first, then section 3 (the rules), then `AGENTS.md`.** Update sections 0, 5, 6 and 9 at the end of every checkpoint (rule 9 in section 3).
 
 ---
 
-## 1. What this is
+## 0. Start here (handoff summary)
 
-A responsive, frontend-only (static export) site that works as a **visual vocabulary of Azure resources**.
+**Last updated:** 2026-10-27, after checkpoint 9 was committed (`465731d`).
 
-- Shows the hierarchy: tenant > management group > subscription > resource group > resource.
-- Every resource has: plain-English definition, analogy, when to use / not use, prerequisites, example config (Portal, Azure CLI, PowerShell, Bicep, ARM), AZ-104 exam notes, a modal, and a shareable page.
-- **Phase 2:** a free in-browser **simulator** ("Try it" -> create page). Resources show Creating / Running / Stopped. It models two regions, peering, DNS, NVA/UDR routing and reachability checks. **Nothing ever talks to real Azure.**
+**What we are building.** Polaris is a free, browser-only place to learn and try out Azure. It has two parts:
 
-Audience: someone studying AZ-104 who wants to understand how Azure pieces fit together, with no Azure account needed.
+1. **Atlas (built, 29 entries so far):** a catalog of Azure resources. Each has a plain-English definition, an analogy, when to use it, prerequisites, examples (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
+2. **Sandbox (not started, the core of the product):** create and configure those resources in a simulated tenant, including RBAC, with a simulated Cloud Shell that runs `az` commands against the in-browser world. **Nothing is ever hosted and nothing ever talks to real Azure.** The goal is to get "the feel" of Azure for free.
 
-> **Vision update (decided 2026-10-25, supersedes the exam focus):** Polaris is **not exam-specific**. It started that way, but the goal is a **free place to try Azure out**: the atlas teaches what each thing is, and a browser-only sandbox lets you create and configure it and get the feel of Azure, without hosting anything real. **RBAC is now in scope** (section 12). Exams (AZ-104, AZ-400) become tags and study aids, not the boundary of the product.
+**Who it is for.** The owner is studying for AZ-104 and then AZ-400, but the product is **not exam-specific**. Exams are tags and study aids. Scope is "as many Azure resources and services as possible", RBAC included. **Polaris is meant to become multi-cloud, but version 1 contains only Azure.** As the owner studies other cloud providers (AWS first, then possibly GCP or others) they will be added, only after Azure v1 ships and Azure is covered (section 10). Design choices made now should not block that: keep Azure-specific details (hierarchy levels, example formats, regions, rule packs) separable from the generic engine and content shape.
 
-> **Scope expansion (decided 2026-10-25):** Polaris is no longer limited to AZ-104. The goal is to cover **as many Azure resources and services as possible**, because the user will also take **AZ-400 (DevOps Engineer Expert)** next. Entries are tagged with the exams they appear in (see section 11). The scope rows in section 2 that say "left out" were AZ-104-only decisions and are **to be revisited**.
+**Where we are.** Checkpoints 1-9 are done and committed. The catalog has 29 entries (section 5). The next step is **checkpoint 10: design the sandbox** as documents only, no UI (section 6). The owner reads and pushes back before anything is built.
 
-> **Priority order (decided 2026-10-25):** Polaris will grow beyond Azure (AWS first, then possibly GCP and others, see section 10), **but Azure comes first and must be fully covered before any other cloud is started.** Do not begin multi-cloud work until v1 ships (checkpoint 20) and the Azure coverage gates pass.
+**How we work (short version, full rules in section 3).**
+- Small checkpoints. At the end of each one the assistant reports and shows a commit message in chat. **The owner commits, the assistant never runs `git commit`.**
+- Every factual claim in content comes from **Microsoft Learn or other official Microsoft docs only**. If it cannot be verified, reword or delete it.
+- Before asking for a commit the app must actually run: snippet checker, lint, type check, build, then a browser check.
 
-## 2. Scope decisions (already made)
+**Commands.**
+
+```bash
+npm run dev                                  # dev server (http://localhost:3000)
+BICEP_PATH=/path/to/bicep npm run check:snippets   # compile every Bicep example, parse every ARM example
+npm run lint
+npx tsc --noEmit
+npm run build                                # static export; also validates all content
+```
+
+**Document map.**
+
+| File | Purpose | Exists |
+|---|---|---|
+| `README.md` | What the project is, how to run it, how to add an entry | yes |
+| `AGENTS.md` | Rules for AI agents (Next.js warning plus a pointer to this plan) | yes |
+| `docs/PLAN.md` | This file: vision, rules, architecture, roadmap, status | yes |
+| `docs/BACKLOG.md` | Azure services not yet in the catalog, in priority order | yes (seed list) |
+| `docs/SIMULATOR.md` | Sandbox world model and engine design | planned, checkpoint 10 |
+| `docs/RBAC.md` | RBAC model for the sandbox | planned, checkpoint 10 |
+| `docs/CLOUDSHELL.md` | Simulated Cloud Shell design | planned, checkpoint 10 |
+| `docs/COVERAGE.md` | Skills-measured coverage table per exam | planned, checkpoint 20 |
+
+---
+
+## 1. Product vision
+
+A responsive, frontend-only (static export) website. No backend, no database, no Azure account needed. State lives in the browser (`localStorage`).
+
+- **Atlas:** the visual vocabulary of Azure. The hierarchy (tenant, management group, subscription, resource group, resource) and, for each resource, what it is, what you need before creating it, and example configuration.
+- **Sandbox:** "Try it" on any resource opens a create page that follows the real portal's labels. Resources move through Creating, Running and Stopped. The sandbox models two regions (Southeast Asia, East Asia), VNet peering, DNS, NVA and UDR routing, reachability checks and RBAC (roles, assignments, a "what if" access checker). A simulated Cloud Shell runs a documented subset of `az` against the same engine.
+- **Honesty rule:** a simulation is never the real service. The UI says "simulated" and links to Learn. Where Learn does not document a behaviour, the sandbox does not invent one.
+
+Why the scope grew (history, newest first): on 2026-10-25 the owner decided the site is not exam-specific and wants RBAC, a Cloud Shell and as many Azure services as possible (sections 11, 12, 13). It started as an AZ-104-only visual atlas.
+
+## 2. Scope decisions
 
 | Topic | Decision |
 |---|---|
-| Exam | Started as AZ-104 only. **Now AZ-104 first, then AZ-400, then the wider Azure catalog** (section 11). Source of truth per exam is the official skills-measured list. |
-| RBAC | Out of the AZ-104 pass so far. **Revisit:** managed identities and service principals are in AZ-400. |
-| Networking | The largest group. |
-| Governance extras | Policy, locks, tags, budgets were left out for AZ-104. **Revisit** (AZ-400 touches Defender for Cloud, policy and compliance). |
-| Application Gateway | Was left out as not a skills-measured heading in AZ-104. **Revisit** under the wider-catalog goal. |
-| Subscription / Resource Group | Container entries, not ordinary resources. |
-| Hosting | Static export, no backend, no database. State lives in `localStorage`. |
+| Cloud | Azure first and fully. AWS next (and maybe GCP) only after Azure v1 and coverage gates (section 10). |
+| Exams | Tags and study aids, not the boundary. AZ-104 first, then AZ-400 (section 11). Source of truth per exam is the official skills-measured list, re-fetched before planning each exam. |
+| RBAC | **In scope** (sandbox directory, roles, assignments, what-if). Built-in roles are imported as data (section 12). |
+| Governance (Policy, locks, tags, budgets) | **In scope**, because they decide whether an action succeeds. Planned for checkpoint 14. |
+| Application Gateway | Not in the catalog yet. In the backlog (it was excluded only because it is not an AZ-104 skills heading). |
+| Subscription, Resource Group, Management group, Tenant | Container entries, not ordinary resources. Resource Group exists. The others arrive in checkpoint 11. |
+| Networking | The largest group so far. |
+| Hosting | Static export. State in `localStorage`. |
 | Regions in the simulator | Southeast Asia (`southeastasia`) and East Asia (`eastasia`). |
+| Languages and tools shown in examples | Portal, Azure CLI, PowerShell, Bicep, ARM JSON. DevOps entries will add YAML (section 11). |
 
 ## 3. Working agreement (rules for every session)
 
@@ -40,10 +78,12 @@ Audience: someone studying AZ-104 who wants to understand how Azure pieces fit t
 2. **The user commits.** The assistant never runs `git commit`.
 3. **It must run.** Before asking for a commit: `npm run check:snippets`, `npm run lint`, `npx tsc --noEmit`, `npm run build`, then dev server plus a browser check.
 4. **Say when to test by hand.** Flag which checkpoints deserve a manual click-through.
-5. **Order of work (revised 2026-10-25):** finish checkpoint 9, then design the sandbox and migrate the schema (10-11), then build the engine, RBAC, governance, create pages, networking rules and Cloud Shell (12-19), then release (20). Catalog batches continue after checkpoint 11. See section 6.
+5. **Order of work (revised 2026-10-25):** after checkpoint 9 (done), design the sandbox and migrate the schema (10-11), then build the engine, RBAC, governance, create pages, networking rules and Cloud Shell (12-19), then release (20). Catalog batches continue after checkpoint 11. See section 6.
 6. **Sources: Microsoft Learn or other official Microsoft docs only.** Every factual claim in content (limits, defaults, names, portal labels, CLI flags, SKUs, exam notes) is verified against Learn before commit. If it cannot be verified, reword it to what Learn says or delete it. No blog posts, no memory.
 7. **Read the Next.js docs first.** `AGENTS.md` says this Next.js version has breaking changes. Read the relevant guide in `node_modules/next/dist/docs/` before using a Next API.
-8. **Check `git status` before finishing a checkpoint.** New files must not be left untracked (see the Status section).
+8. **Check `git status` before finishing a checkpoint.** New files must not be left untracked (see the lesson in section 9).
+9. **Keep the docs current.** At the end of every checkpoint update sections 0, 5, 6 and 9 of this file, and `README.md` if commands or structure changed. A new AI must be able to follow the project from the docs alone, without chat history.
+10. **Be honest about gaps.** In every checkpoint report say what was verified, what could not be verified and was left out, and which decisions the owner should check.
 
 ### Content verification routine
 
@@ -70,11 +110,13 @@ Batching tip: verification of several entries can be split across read-only suba
 - **Snippet checker:** `scripts/check-snippets.ts` compiles every Bicep example with the real Bicep CLI and parses every ARM example. It catches wrong property names.
 - **Snippet writing rules** (inside TS template literals): no `${}`; use `\\` for bash line continuation; use `` \` `` for the PowerShell backtick.
 
-### Tooling notes (Cursor sandbox)
+### Tooling notes (Cursor sandbox and local machine)
 
-- `bicep` and `tsx` must run outside the sandbox. Bicep binary lives at `/tmp/bicep-tool/bicep` (re-download if `/tmp` was cleared) and is passed with `BICEP_PATH`.
-- Start the dev server outside the sandbox and in the background. Stop it with `pkill -f "next dev"`.
-- Browser testing: CDP scripts in the Cursor browser. The pane is small, so use iframes at a fixed width (for example 390px) to test phone layouts.
+- `bicep` and `tsx` must run outside the Cursor command sandbox (request full permissions). The Bicep CLI is found via `BICEP_PATH` or `bicep` on `PATH`. If neither exists the snippet checker **skips** Bicep checks with a warning, so always make sure it prints "N Bicep" in its summary. Install it from the official Bicep releases or with `az bicep install` and point `BICEP_PATH` at it (previously at `/tmp/bicep-tool/bicep`, which is lost when `/tmp` is cleared).
+- Start the dev server outside the sandbox and in the background. **The owner often has their own dev server on port 3000.** Check with `ps aux | grep "next dev"` first, and reuse it instead of starting another (Next.js refuses a second dev server in the same folder). Never kill a dev server you did not start.
+- Browser testing uses CDP scripts in the Cursor browser. The pane is small, so test phone layouts with same-origin iframes at 390px and compare `documentElement.scrollWidth` with 390. The auto-review may block a long script as unrelated; resubmit it for the owner's approval.
+- Lucide icon names used in content (`icon: "..."`) must be added to `src/components/resource-icon.tsx`. `npx tsc --noEmit` fails if a name does not exist in lucide.
+- Long unbroken words (for example `Microsoft.Compute/virtualMachineScaleSets/virtualMachines`) once stretched the detail page on phones. Text spans in `resource-detail.tsx` use `min-w-0 [overflow-wrap:anywhere]`. Keep that when adding new text blocks.
 
 ## 5. Current catalog (29 entries)
 
@@ -92,18 +134,13 @@ The hierarchy map still shows Tenant, Management group and Subscription as "Not 
 
 Reordered 2026-10-25. Each checkpoint ends with the checks in section 3 and a commit message shown in chat.
 
-**Why the order changed:** the product is now an Azure sandbox with RBAC and a simulated Cloud Shell (section 12), not just a catalog. The world model now includes the tenant, the directory, management groups, subscriptions and role assignments. If we keep writing catalog entries first, we will rewrite them when the model arrives. So: finish checkpoint 9, then **design the sandbox and migrate the schema once**, then build the engine, and keep adding catalog content afterwards in batches that fit the new schema.
+**Why the order changed:** the product is now an Azure sandbox with RBAC and a simulated Cloud Shell (section 12), not just a catalog. The world model now includes the tenant, the directory, management groups, subscriptions and role assignments. If we keep writing catalog entries first, we will rewrite them when the model arrives. So: after checkpoint 9 (done), **design the sandbox and migrate the schema once**, then build the engine, and keep adding catalog content afterwards in batches that fit the new schema.
 
 ### Done
 
-Checkpoints 1-8 (see the status log): scaffold, theming, schema, home page, modal and pages, networking, compute. 22 entries.
+Checkpoints 1-9 (see the status log in section 9): scaffold, theming, schema, home page, modal and pages, networking, compute, storage and monitor and backup. **29 entries.** Catalog content is fully verified against Learn up to this point.
 
 ### Next
-
-**Checkpoint 9 - Storage, monitoring, backup** *(done)*
-- Storage: Blob container, Azure Files share (SMB / NFS, tiers), plus notes on SAS, access tiers, lifecycle management and replication.
-- Monitor & Backup: Log Analytics workspace, Azure Monitor alert rule (and action group), Network Watcher (connection monitor, IP flow verify, next hop), Recovery Services vault (backup policy, soft delete).
-- Verify every claim against Learn, snippet checker, browser sweep.
 
 **Checkpoint 10 - Design the sandbox (documents and decisions, no UI)** *(next)*
 - `docs/SIMULATOR.md`: the world model (tenant > directory > management groups > subscriptions > resource groups > resources, role assignments, locks, policy assignments), lifecycle states, validation, persistence format and versioning, tiers of fidelity (section 12).
@@ -156,7 +193,7 @@ Checkpoints 1-8 (see the status log): scaffold, theming, schema, home page, moda
 
 **Checkpoint 20 - Release v1**
 - GitHub Actions static deploy (Azure Static Web Apps or Vercel).
-- Replace the boilerplate `README.md`.
+- Review and refresh `README.md` (a real one exists since 2026-10-27).
 - Azure coverage gate for AZ-104 (`docs/COVERAGE.md`: every skills bullet mapped to an entry, status and fidelity tier), plus a content audit against Learn.
 
 ### After v1 (and in between, in batches)
@@ -169,7 +206,7 @@ Checkpoints 1-8 (see the status log): scaffold, theming, schema, home page, moda
 
 These are starting points, not verified facts. Each rule must be checked against Learn before it is implemented.
 
-- **World model:** `subscription -> resourceGroups -> resources`, each resource has `id`, `type`, `region`, `state`, `properties`, and parent references. Region is one of `southeastasia`, `eastasia`.
+- **World model (first sketch, to be replaced by `docs/SIMULATOR.md`):** one tenant with a directory (users, groups, service principals, managed identities), then management groups, subscriptions, resource groups and resources. Each resource has `id`, `type`, `region`, `state`, `properties` and parent references. Role assignments, locks and policy assignments attach to scopes. Region is one of `southeastasia`, `eastasia`.
 - **State machine:** `Creating` (short timer) -> `Running`. VMs also `Stopped` and `Deallocated`, because they bill differently.
 - **Pure engine, thin UI:** engine functions take a world and return a new world or a result (`createResource(world, input)`, `checkReachability(world, from, to, port, protocol)`). No React inside the engine, so it can be unit tested.
 - **Reachability algorithm (sketch):**
@@ -179,33 +216,36 @@ These are starting points, not verified facts. Each rule must be checked against
   4. At each NIC and subnet boundary, evaluate NSG rules in priority order, outbound at the source and inbound at the destination.
   5. Return a trace plus the first blocking rule.
 - **Explainability is the product.** A "no" must always say which rule or missing piece caused it.
-- **Out of scope for the simulator:** real timing, cost estimation, quotas, and anything RBAC.
+- **Out of scope for the simulator:** real timing, cost estimation and quotas. (RBAC is in scope, see section 12.)
 
 ## 8. Open questions
 
 - Answered 2026-10-25: "100% Azure" means as many Azure resources as possible, not just AZ-104, and AZ-400 is next. The coverage gate is therefore per exam (section 11). Still open: where the long tail of Azure services stops, and what order to add it in.
 - AZ-400 is mostly DevOps practice and tooling (GitHub, Azure DevOps, pipelines), not ARM resources. How should those entries look? See section 11.
-- Do Tenant and Management group get catalog entries, or stay explainer-only on the hierarchy map?
-- Hosting target for deploy: Azure Static Web Apps (on-theme) or Vercel (simplest)?
+- Tenant, Management group and Subscription get container entries in checkpoint 11. Open: how much detail the Tenant and Management group entries need, since they have no create flow outside the directory.
+- Hosting target for deploy: Azure Static Web Apps (on-theme) or Vercel (simplest)? Decide at checkpoint 20.
+- Section 11 "Proposed model" (`kind`, `exams`, service-area categories) is a proposal. The owner confirms it in checkpoint 10.
 - `az network private-endpoint dns-zone-group create --zone-name`: Learn describes it as the DNS zone name, but its own examples use a label. The content treats it as a label and says so. Re-check when the CLI reference is updated.
 - Bicep API versions in examples (for example `2023-09-01`) compile fine, but Learn lists newer ones. Decide whether to bump them in one sweep.
 - Peering "Allow forwarded traffic": Learn describes which side carries it inconsistently, so the content is deliberately non-directional.
 
 ## 9. Status log
 
-| # | Checkpoint | State |
-|---|---|---|
-| 1 | Scaffold Next.js with static export | Done |
-| 2 | shadcn/ui, theming, base dependencies | Done |
-| 3 | Typed content schema and first entries | Done |
-| 4 | Home page: hierarchy map and searchable catalog | Done |
-| 5 | Detail modal and static resource pages | Done |
-| 6 | 10 networking resources and the snippet checker | Done |
-| 7 | Load Balancer, Bastion, Service Endpoint, Private Endpoint, and a Learn verification pass over all 17 entries | Done |
-| 8 | Compute: VM Scale Set, App Service Plan, App Service, Container Instances, Container Apps (22 entries total). Also fixed long unbroken words stretching the detail page on phones. | Done, waiting for commit |
-| 9 | Storage and monitor and backup: Blob Container, Azure Files Share, Log Analytics Workspace, Alert Rule, Action Group, Network Watcher, Recovery Services Vault (29 entries total) | Done, waiting for commit |
-| 10 | Design the sandbox (documents only) | Next |
-| 11-20 | See roadmap in section 6 | Not started |
+| # | Checkpoint | State | Commit |
+|---|---|---|---|
+| 1 | Scaffold Next.js with static export | Done | `c142ec4` |
+| 2 | shadcn/ui, theming, base dependencies | Done | `b68a65a` |
+| 3 | Typed content schema and first entries | Done | `f22c839` |
+| 4 | Home page: hierarchy map and searchable catalog | Done | `125c72e` |
+| 5 | Detail modal and static resource pages | Done | `1621fb9` |
+| 6 | 10 networking resources and the snippet checker | Done | `2794832` |
+| 7 | Load Balancer, Bastion, Service Endpoint, Private Endpoint, plus a Learn verification pass over all 17 entries | Done | `58d885b` |
+| 8 | Compute: VM Scale Set, App Service Plan, App Service, Container Instances, Container Apps (22 entries). Also fixed long words stretching the detail page on phones. | Done | `83a50ba` |
+| 9 | Storage and monitor and backup: Blob Container, Azure Files Share, Log Analytics Workspace, Alert Rule, Action Group, Network Watcher, Recovery Services Vault (29 entries) | Done | `465731d` |
+| 10 | Design the sandbox (documents only) | **Next** | |
+| 11-20 | See roadmap in section 6 | Not started | |
+
+Docs-only commits: `71121bf` (first plan), `0c9ad5d` (roadmap reorder).
 
 **Lesson from checkpoint 7:** a commit once left four new content files untracked while `index.ts` imported them, which breaks a fresh clone. Run `git status` before every commit and stage new files.
 
@@ -332,7 +372,7 @@ Idea to evaluate for scale: generate the create forms and property validation fr
 ### Effect on the plan
 
 - The sandbox design (checkpoint 10) now comes right after checkpoint 9 and the simulator engine design moves up in importance, because the world model now includes the tenant, the directory, management groups, subscriptions and role assignments, not just networking. Design it before adding much more catalog content, so new entries are written to fit it.
-- RBAC and directory entries join the catalog (checkpoint 10 area): Role definition, Role assignment, Custom role, Managed identity, Service principal, User, Group, Management group, Subscription, Tenant.
+- RBAC and directory entries join the catalog (checkpoint 13; container entries in checkpoint 11): Role definition, Role assignment, Custom role, Managed identity, Service principal, User, Group, Management group, Subscription, Tenant.
 - The catalog schema gets the `kind`, `exams` and fidelity-tier fields described in section 11, plus the tier above.
 - The earlier "left out" scope items (RBAC, Policy, locks, tags, budgets) are now in scope. Policy and locks matter to the sandbox because they change what actions succeed.
 

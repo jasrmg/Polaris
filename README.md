@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Polaris
 
-## Getting Started
+A free, browser-only place to learn and try out Azure. Nothing is hosted, nothing talks to real Azure, and no Azure account is needed.
 
-First, run the development server:
+Polaris has two parts:
+
+- **Atlas (built):** a catalog of Azure resources. Each entry has a plain-English definition, an analogy, when to use it, prerequisites, example configuration (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
+- **Sandbox (planned):** create and configure those resources in a simulated tenant, with RBAC and a simulated Cloud Shell that runs `az` commands against an in-browser world.
+
+Every fact in the catalog is checked against Microsoft Learn or other official Microsoft documentation.
+
+**Azure only for now, multi-cloud later.** Version 1 contains only Azure. The plan is to add other cloud providers (AWS first) as the owner studies them, after Azure v1 is done. See section 10 of `docs/PLAN.md`.
+
+> **Working on this project (human or AI): read [`docs/PLAN.md`](docs/PLAN.md) first.** Section 0 has the current state, the next step, the rules and a map of the docs.
+
+## Status
+
+29 entries across compute, storage, networking, and monitor and backup. The next step is designing the sandbox (documents only). See the roadmap in `docs/PLAN.md`.
+
+## Run it
+
+Requires Node.js and npm.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Checks
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Run these before committing. The first one needs the Bicep CLI.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+BICEP_PATH=/path/to/bicep npm run check:snippets   # compiles every Bicep example, parses every ARM example
+npm run lint
+npx tsc --noEmit
+npm run build                                       # static export; also validates all content
+```
 
-## Learn More
+If the Bicep CLI is not found, `check:snippets` skips the Bicep checks and says so. Install it with `az bicep install` or from the official Bicep releases.
 
-To learn more about Next.js, take a look at the following resources:
+## How the project is laid out
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Path | What it holds |
+|---|---|
+| `src/content/schema.ts` | The Zod schema every catalog entry must satisfy |
+| `src/content/resources/<slug>.ts` | One file per catalog entry |
+| `src/content/index.ts` | Registers entries; at build time checks unique slugs and that cross-references resolve |
+| `src/content/hierarchy.ts`, `regions.ts` | Hierarchy levels and the two simulated regions |
+| `src/components/` | UI: explorer, hierarchy map, cards, detail view, modal, code blocks |
+| `src/components/resource-icon.tsx` | Maps an entry's icon name to a lucide icon |
+| `src/app/` | Next.js App Router pages: home, `/resources/<slug>/`, and static JSON used by the modal |
+| `scripts/check-snippets.ts` | The snippet checker |
+| `docs/` | Plan and design documents |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The site is a static export (`output: "export"`), so it can be hosted anywhere that serves files.
 
-## Deploy on Vercel
+## Adding a catalog entry
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Read `docs/PLAN.md` section 3 (the rules) first. Sources must be Microsoft Learn or other official Microsoft docs.
+2. Copy a recent entry such as `src/content/resources/container-apps.ts` and write the new one from Learn. Each claim (limits, defaults, portal labels, CLI flags, property names) must be verified.
+3. Register it in `src/content/index.ts`.
+4. If it uses a new lucide icon name, add it to `src/components/resource-icon.tsx`.
+5. Add the slug to `related` in the entries it connects to.
+6. Run the checks above and look at the page in the browser, including on a phone-width window.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Writing rules for code samples inside the TypeScript template literals: no `${}`, use `\\` for bash line continuation, and `` \` `` for the PowerShell backtick.
+
+## Notes for AI agents
+
+- This project uses a Next.js version with breaking changes. See `AGENTS.md`, and read the guide in `node_modules/next/dist/docs/` before using a Next.js API.
+- The owner makes all git commits. Do not commit.
