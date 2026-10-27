@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# raw exports from a real Azure account (they contain subscription IDs): never commit
+/data/raw/
+/roles_*.json

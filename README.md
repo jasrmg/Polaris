@@ -15,7 +15,7 @@ Every fact in the catalog is checked against Microsoft Learn or other official M
 
 ## Status
 
-29 entries across compute, storage, networking, and monitor and backup. The next step is designing the sandbox (documents only). See the roadmap in `docs/PLAN.md`.
+29 entries across compute, storage, networking, and monitor and backup. The sandbox design is written and waiting for the owner's review (`docs/SIMULATOR.md`, `docs/RBAC.md`, `docs/CLOUDSHELL.md`, evidence in `docs/research/`); nothing of it is built yet. See the roadmap in `docs/PLAN.md`.
 
 ## Run it
 
@@ -51,7 +51,7 @@ If the Bicep CLI is not found, `check:snippets` skips the Bicep checks and says 
 | `src/components/resource-icon.tsx` | Maps an entry's icon name to a lucide icon |
 | `src/app/` | Next.js App Router pages: home, `/resources/<slug>/`, and static JSON used by the modal |
 | `scripts/check-snippets.ts` | The snippet checker |
-| `docs/` | Plan and design documents |
+| `docs/` | Plan (`PLAN.md`), sandbox design (`SIMULATOR.md`, `RBAC.md`, `CLOUDSHELL.md`), backlog, and `research/` (evidence reports with sources) |
 
 The site is a static export (`output: "export"`), so it can be hosted anywhere that serves files.
 

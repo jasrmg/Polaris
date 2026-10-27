@@ -6,7 +6,7 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 ## 0. Start here (handoff summary)
 
-**Last updated:** 2026-10-27, after checkpoint 9 was committed (`465731d`).
+**Last updated:** 2026-10-27, during checkpoint 10. Checkpoints 1-9 are committed (last: `465731d`). The checkpoint 10 design documents are written and **waiting for the owner's review**; nothing is built.
 
 **What we are building.** Polaris is a free, browser-only place to learn and try out Azure. It has two parts:
 
@@ -15,7 +15,9 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 **Who it is for.** The owner is studying for AZ-104 and then AZ-400, but the product is **not exam-specific**. Exams are tags and study aids. Scope is "as many Azure resources and services as possible", RBAC included. **Polaris is meant to become multi-cloud, but version 1 contains only Azure.** As the owner studies other cloud providers (AWS first, then possibly GCP or others) they will be added, only after Azure v1 ships and Azure is covered (section 10). Design choices made now should not block that: keep Azure-specific details (hierarchy levels, example formats, regions, rule packs) separable from the generic engine and content shape.
 
-**Where we are.** Checkpoints 1-9 are done and committed. The catalog has 29 entries (section 5). The next step is **checkpoint 10: design the sandbox** as documents only, no UI (section 6). The owner reads and pushes back before anything is built.
+**Where we are.** Checkpoints 1-9 are done and committed. The catalog has 29 entries (section 5). **Checkpoint 10 (design the sandbox, documents only) is written, not yet reviewed:** `docs/SIMULATOR.md`, `docs/RBAC.md`, `docs/CLOUDSHELL.md` and six evidence reports in `docs/research/`. The decisions the owner already made are in section 14; the assistant's proposals that still need the owner's yes or no are listed in section 14 as "to confirm". The next step after the owner approves is **checkpoint 11: schema migration and hierarchy entries** (section 6). Nothing is built until then.
+
+**Decisions already made by the owner (2026-10-27, details in section 14):** the Cloud Shell runs ARM JSON only in v1 (Bicep is compiled to ARM at build time); the sandbox has switchable identities ("act as"); one tenant with a default subscription and the ability to add subscriptions and management groups; built-in roles ship only if Learn documents them, with permissions taken from the owner's own `az role definition list` export.
 
 **How we work (short version, full rules in section 3).**
 - Small checkpoints. At the end of each one the assistant reports and shows a commit message in chat. **The owner commits, the assistant never runs `git commit`.**
@@ -40,9 +42,10 @@ npm run build                                # static export; also validates all
 | `AGENTS.md` | Rules for AI agents (Next.js warning plus a pointer to this plan) | yes |
 | `docs/PLAN.md` | This file: vision, rules, architecture, roadmap, status | yes |
 | `docs/BACKLOG.md` | Azure services not yet in the catalog, in priority order | yes (seed list) |
-| `docs/SIMULATOR.md` | Sandbox world model and engine design | planned, checkpoint 10 |
-| `docs/RBAC.md` | RBAC model for the sandbox | planned, checkpoint 10 |
-| `docs/CLOUDSHELL.md` | Simulated Cloud Shell design | planned, checkpoint 10 |
+| `docs/SIMULATOR.md` | Sandbox world model, pipeline, lifecycle, networking decisions, fidelity tiers, schema decisions, persistence, forms-generation verdict | yes (checkpoint 10, awaiting review) |
+| `docs/RBAC.md` | Azure RBAC and directory model, evaluator, built-in roles dataset and import rules, "act as" | yes (checkpoint 10, awaiting review) |
+| `docs/CLOUDSHELL.md` | Simulated `az`: grammar, mini-shell, output formats, `--query`, errors, command waves, deployments and what-if, JMESPath, Bicep and help-text verdicts | yes (checkpoint 10, awaiting review) |
+| `docs/research/` | Six evidence reports (resource model, RBAC, networking, three spikes), each with its source list, dated 2026-10-27. Facts only; the design docs above decide what to build | yes |
 | `docs/COVERAGE.md` | Skills-measured coverage table per exam | planned, checkpoint 20 |
 
 ---
@@ -142,16 +145,13 @@ Checkpoints 1-9 (see the status log in section 9): scaffold, theming, schema, ho
 
 ### Next
 
-**Checkpoint 10 - Design the sandbox (documents and decisions, no UI)** *(next)*
-- `docs/SIMULATOR.md`: the world model (tenant > directory > management groups > subscriptions > resource groups > resources, role assignments, locks, policy assignments), lifecycle states, validation, persistence format and versioning, tiers of fidelity (section 12).
-- `docs/RBAC.md`: role definition and assignment model, scope inheritance, action wildcard matching, notActions, dataActions, deny assignments, custom roles, how Entra directory roles are kept separate. Every rule cites Learn.
-- `docs/CLOUDSHELL.md`: command grammar, which `az` command groups ship first, output formats, `--query`, error messages, session state (`az login`, `az account set`, defaults).
-- Schema decisions: `kind`, `exams`, fidelity `tier`, service-area categories, the shape of `simulator` fields (replace the ad hoc ones).
-- Short spikes, each with a written verdict: (a) generating create forms and validation from Microsoft's published resource definitions (licence, size, staleness), (b) a JMESPath implementation for `--query`, (c) whether Bicep can be compiled in the browser or only ARM JSON, (d) whether `az` help text can be reused from the open-source CLI (licence).
-- **Good checkpoint for you to read and push back on.** Nothing gets built until you agree.
+**Checkpoint 10 - Design the sandbox (documents and decisions, no UI)** *(written 2026-10-27, awaiting the owner's review)*
+- Written: `docs/SIMULATOR.md` (world, pipeline, lifecycle, networking decisions N1-N17, tiers, schema decisions in its section 9, persistence, spike A verdict), `docs/RBAC.md` (directory, evaluator, roles dataset rule and import process, act as), `docs/CLOUDSHELL.md` (grammar, mini-shell, outputs, `--query`, errors, command waves, deployments and what-if, spike B, C and D verdicts), and the evidence in `docs/research/`.
+- Spike verdicts: **A** forms from `Azure/bicep-types-az` at build time plus a hand-written overlay (yes, with limits); **B** Bicep can compile in a browser (about 48.5 MB gzipped) but v1 ships ARM JSON only; **C** use `jmespath.js` 0.16.0, pinned, with a conformance test; **D** `az` help text may be reused (MIT), extracted only for the supported commands, with a fallback to hand-curated summaries.
+- **Good checkpoint for you to read and push back on.** Nothing gets built until you agree. The things to check are listed in section 14 under "To confirm".
 
 **Checkpoint 11 - Schema migration and hierarchy entries**
-- Add `kind`, `exams`, `tier` and service-area categories. Migrate all existing entries. Add filters (by exam, by kind, by tier) to the catalog.
+- Add `kind` (four values: `azure-resource`, `directory-object`, `devops-tool`, `concept`), `exams`, `tier` and service-area categories, exactly as proposed in `docs/SIMULATOR.md` section 9 (once the owner confirms). Replace the ad hoc `simulator` array with the single object defined there. Migrate all existing entries (tier assignment is in `docs/SIMULATOR.md` section 7). Add filters (by exam, by kind, by tier) to the catalog.
 - Add the hierarchy entries: Tenant, Management group, Subscription (containers).
 - Dependency graph view on each page, and a light accessibility pass.
 
@@ -161,9 +161,9 @@ Checkpoints 1-9 (see the status log in section 9): scaffold, theming, schema, ho
 - Unit tests for every rule. Each rule carries a comment with its Learn URL.
 
 **Checkpoint 13 - Directory and RBAC**
-- Import all built-in roles with a script and an "as of" date.
-- Simulated directory (users, groups, service principals, managed identities), role assignments at every scope with inheritance, custom roles.
-- Evaluator and the "what if" checker (allowed or denied, with the reason).
+- Import the built-in roles with `scripts/import-roles.ts` and an "as of" date, following the rule in `docs/RBAC.md` section 8: only roles Learn documents (499 of the owner's export plus 6 added by hand from Learn), permissions from the API export, subscription IDs stripped, raw exports kept in the git-ignored `data/raw/`.
+- Simulated directory (users, groups, service principals, managed identities) with "act as", role assignments at every scope with inheritance, custom roles, elevate access.
+- Evaluator and the "what if" checker (allowed, denied or "conditional: not evaluated", with the reason), as specified in `docs/RBAC.md` section 5.
 - Catalog entries: Role definition, Role assignment, Custom role, Managed identity, Service principal, User, Group.
 
 **Checkpoint 14 - Governance that changes outcomes**
@@ -171,7 +171,7 @@ Checkpoints 1-9 (see the status log in section 9): scaffold, theming, schema, ho
 - Catalog entries for each.
 
 **Checkpoint 15 - Create pages ("Try it")**
-- A create form per tier 1 and tier 2 entry, following the Learn portal labels, with validation messages that explain why.
+- A create form per tier 1 and tier 2 entry, following the Learn portal labels, with validation messages that explain why. Build the generator script here (`Azure/bicep-types-az` at a pinned commit, pruned per type, plus the hand-written overlay; `docs/SIMULATOR.md` section 11).
 - "My Environment" list with state badges.
 
 **Checkpoint 16 - Networking behaviour and reachability checker**
@@ -184,7 +184,7 @@ Checkpoints 1-9 (see the status log in section 9): scaffold, theming, schema, ho
 - The CLI examples already in the catalog must run against the in-browser world.
 
 **Checkpoint 18 - Cloud Shell v2**
-- `az deployment group / sub create` with ARM JSON (and Bicep if the spike says it is possible), `what-if`, export as ARM / Bicep.
+- `az deployment group create / what-if / validate / show / list / delete` with **ARM JSON only** (owner decision; the spike says Bicep can run in a browser but costs about 48.5 MB gzipped, so catalog Bicep is compiled to ARM at build time), resource group scope, incremental mode, `what-if` in Learn's text layout, export as ARM. Details: `docs/CLOUDSHELL.md` section 12.
 - More command groups, PowerShell flavour if justified, tab completion.
 
 **Checkpoint 19 - Dashboard, scenarios, sharing**
@@ -202,9 +202,11 @@ Checkpoints 1-9 (see the status log in section 9): scaffold, theming, schema, ho
 - **Multi-cloud** (section 10) starts only after v1 and the AZ-104 and AZ-400 coverage gates.
 - **Rule for interleaving:** a catalog batch may be inserted between any two checkpoints from 12 onwards if the user wants more content, but never before checkpoint 11.
 
-## 7. Simulator design notes (to be expanded in `docs/SIMULATOR.md`)
+## 7. Simulator design notes (superseded by `docs/SIMULATOR.md`)
 
-These are starting points, not verified facts. Each rule must be checked against Learn before it is implemented.
+**Superseded on 2026-10-27:** the real design is in `docs/SIMULATOR.md`, `docs/RBAC.md` and `docs/CLOUDSHELL.md`, backed by `docs/research/`. The sketch below is kept only as history; if it disagrees with those files, they win.
+
+These were starting points, not verified facts.
 
 - **World model (first sketch, to be replaced by `docs/SIMULATOR.md`):** one tenant with a directory (users, groups, service principals, managed identities), then management groups, subscriptions, resource groups and resources. Each resource has `id`, `type`, `region`, `state`, `properties` and parent references. Role assignments, locks and policy assignments attach to scopes. Region is one of `southeastasia`, `eastasia`.
 - **State machine:** `Creating` (short timer) -> `Running`. VMs also `Stopped` and `Deallocated`, because they bill differently.
@@ -224,7 +226,8 @@ These are starting points, not verified facts. Each rule must be checked against
 - AZ-400 is mostly DevOps practice and tooling (GitHub, Azure DevOps, pipelines), not ARM resources. How should those entries look? See section 11.
 - Tenant, Management group and Subscription get container entries in checkpoint 11. Open: how much detail the Tenant and Management group entries need, since they have no create flow outside the directory.
 - Hosting target for deploy: Azure Static Web Apps (on-theme) or Vercel (simplest)? Decide at checkpoint 20.
-- Section 11 "Proposed model" (`kind`, `exams`, service-area categories) is a proposal. The owner confirms it in checkpoint 10.
+- Section 11 "Proposed model" (`kind`, `exams`, service-area categories) was refined in `docs/SIMULATOR.md` section 9 (four kinds including `directory-object`, new category ids). **Still waiting for the owner's confirmation** (section 14, "To confirm").
+- Research left several items unverified or open; each design doc ends with its own "Not verified and open" list. The main ones: the order ARM runs checks in, wildcard grammar, root scope `/` versus the root management group, why 34 of 499 shared roles differ between Learn and the API, ABAC condition grammar, Policy (not yet researched), the content licence of generated Learn pages.
 - `az network private-endpoint dns-zone-group create --zone-name`: Learn describes it as the DNS zone name, but its own examples use a label. The content treats it as a label and says so. Re-check when the CLI reference is updated.
 - Bicep API versions in examples (for example `2023-09-01`) compile fine, but Learn lists newer ones. Decide whether to bump them in one sweep.
 - Peering "Allow forwarded traffic": Learn describes which side carries it inconsistently, so the content is deliberately non-directional.
@@ -242,7 +245,7 @@ These are starting points, not verified facts. Each rule must be checked against
 | 7 | Load Balancer, Bastion, Service Endpoint, Private Endpoint, plus a Learn verification pass over all 17 entries | Done | `58d885b` |
 | 8 | Compute: VM Scale Set, App Service Plan, App Service, Container Instances, Container Apps (22 entries). Also fixed long words stretching the detail page on phones. | Done | `83a50ba` |
 | 9 | Storage and monitor and backup: Blob Container, Azure Files Share, Log Analytics Workspace, Alert Rule, Action Group, Network Watcher, Recovery Services Vault (29 entries) | Done | `465731d` |
-| 10 | Design the sandbox (documents only) | **Next** | |
+| 10 | Design the sandbox (documents only): three design docs plus six research reports | **Written, awaiting owner review** | |
 | 11-20 | See roadmap in section 6 | Not started | |
 
 Docs-only commits: `71121bf` (first plan), `0c9ad5d` (roadmap reorder).
@@ -333,8 +336,8 @@ The sandbox is no longer an optional add-on. The catalog exists to feed it.
 
 Yes, we copy how Azure does it, including the built-in roles. The data is public:
 
-- Azure has **several hundred built-in roles** (the Microsoft Learn built-in roles page lists roughly 500 role IDs, so confirm the exact count when importing). Each role is a definition: a name, an ID, `actions`, `notActions`, `dataActions`, `notDataActions` and assignable scopes.
-- Source of truth: the Learn built-in roles reference and the Azure RBAC docs, and the role definitions that Microsoft publishes. Import them into a static JSON file by a script with a recorded "as of" date, not by hand. Re-import periodically, since Microsoft adds roles.
+- Azure has **hundreds of built-in roles**. Counted on 2026-10-27: Learn documents about 505; the live API returned 970 (471 have no Learn page). Each role is a definition: a name, an ID, `actions`, `notActions`, `dataActions`, `notDataActions` and assignable scopes.
+- **Decided 2026-10-27:** ship only roles Learn documents, with permissions from the owner's `az role definition list` export, imported by a script with a recorded "as of" date, never by hand. Rules, counts and the privacy handling are in `docs/RBAC.md` section 8. Re-import periodically, since Microsoft adds roles.
 - **Ship all built-in roles as data, but model behaviour deeply only where it matters.** Evaluating "can this principal do this action on this resource" needs only the role's action strings, so every built-in role works for free once the evaluator exists.
 
 What the RBAC part of the sandbox models:
@@ -384,7 +387,7 @@ Idea to evaluate for scale: generate the create forms and property validation fr
 
 ## 13. Simulated Cloud Shell: design notes
 
-Decided 2026-10-25. Built in checkpoints 17 and 18, designed in checkpoint 10 (`docs/CLOUDSHELL.md`). These are starting points to be checked against the Azure CLI reference on Learn.
+Decided 2026-10-25. Built in checkpoints 17 and 18. **Designed in checkpoint 10: `docs/CLOUDSHELL.md` is now the source of truth; this section is the original sketch.** Since then: Bicep in the browser is not in v1 (ARM JSON only, owner decision), `--query` uses `jmespath.js`, and help text is extracted only for supported commands.
 
 - **What it is:** a terminal in the page that parses `az` commands and runs them against the in-browser world, the same engine the create pages use. A command and a form must produce the same result, because both call the same engine functions.
 - **Parser:** `az <group> [<subgroup>] <command> --flag value`, with the documented short flags, `--help`, and `--output` (`json`, `table`, `tsv`). Output shapes follow the Learn reference examples. Where Learn does not document an output, the shell says so instead of inventing one.
@@ -397,3 +400,29 @@ Decided 2026-10-25. Built in checkpoints 17 and 18, designed in checkpoint 10 (`
 - **PowerShell flavour:** a second shell mode (`New-AzResourceGroup`, `Get-AzVM`) is possible later, since the catalog already has PowerShell examples. Decide after Cloud Shell v2.
 - **Labelling:** the shell always shows a banner that it is simulated, so nobody mistakes it for a real subscription.
 - **Not planned:** running real shell commands, anything that needs a real network, and Azure features that are not documented well enough to simulate honestly.
+
+## 14. Decisions log (checkpoint 10)
+
+### Decided by the owner (2026-10-27)
+
+| Question | Answer |
+|---|---|
+| Cloud Shell deployments | ARM JSON only in v1; catalog Bicep compiled to ARM at build time; in-browser Bicep revisited after v1 |
+| Identities | Yes: simulated users, groups and service principals, and "act as" |
+| Tenant size | One tenant, a default subscription, add more subscriptions and management groups |
+| Built-in roles | Only roles Learn documents; permissions from the owner's own API export; the other 471 API roles are a possible later opt-in list; effort scales with catalog (each entry gets a "roles that matter here" list) |
+| Next provider after AWS | Decided by what the owner studies next (unchanged) |
+
+### To confirm (the assistant's proposals, not yet agreed)
+
+1. **Schema** (`docs/SIMULATOR.md` section 9): four `kind` values (`azure-resource`, `directory-object`, `devops-tool`, `concept`), `exams` tags, the new service-area `category` ids, `tier` 1-3, and the single `simulator` object that replaces the ad hoc array. Also which tier each of the 29 current entries gets (section 7 there).
+2. **Networking defaults N1-N17** (`docs/SIMULATOR.md` section 6): where Learn pages disagree, the assistant picked one reading. The owner may overrule any row.
+3. **Starter world:** user "You" with Owner on the default subscription and the Global Administrator flag (`docs/SIMULATOR.md` section 10, `docs/RBAC.md` section 3).
+4. **Pipeline order** (parse, authenticate, authorize, subscription state, provider registration, locks, policy, validate, apply): a design choice, because Learn does not document the order (`docs/SIMULATOR.md` section 4.1).
+5. **Roles dataset licence approach** (`docs/RBAC.md` section 8.3): data comes from the API export, Learn is used only for the documented-role list, with a visible credit. This is not legal advice; the owner may want to confirm Microsoft's terms for a public site.
+6. **JMESPath library** (`docs/CLOUDSHELL.md` section 9): the original `jmespath.js` (unmaintained since 2022, Apache-2.0) with a conformance test, versus the maintained community fork (MPL-2.0, not byte-compatible).
+7. **`az` help text** (`docs/CLOUDSHELL.md` section 10): extract from MIT-licensed `azure-cli` for supported commands only, fallback to hand-curated summaries.
+
+### Not decided yet
+
+Policy model (needs its own research before checkpoint 14); PowerShell shell flavour (after v2); where the long tail of Azure stops; hosting target (checkpoint 20); whether to include in-browser Bicep after v1.
