@@ -179,7 +179,7 @@ Checkpoints 1-9 (see the status log in section 9): scaffold, theming, schema, ho
 - "Can A reach B?" with a full trace and the rule that allowed or blocked each hop.
 
 **Checkpoint 17 - Cloud Shell v1**
-- Terminal UI in the page, command parser, and the first command groups: `az login`, `az account`, `az group`, `az network vnet / subnet / nsg / public-ip`, `az vm`, `az storage account`, `az role assignment`.
+- Terminal UI in the page, mini-shell, command parser and registry, and the first command groups (wave list in `docs/CLOUDSHELL.md` section 11): session commands, `az group`, `az network ...`, `az vm`, `az storage account`, `az role assignment`.
 - Output formats (`json`, `table`, `tsv`), `--query`, `--help`, errors that match the documented ones.
 - The CLI examples already in the catalog must run against the in-browser world.
 
@@ -248,7 +248,7 @@ These were starting points, not verified facts.
 | 10 | Design the sandbox (documents only): three design docs plus six research reports | **Written, awaiting owner review** | |
 | 11-20 | See roadmap in section 6 | Not started | |
 
-Docs-only commits: `71121bf` (first plan), `0c9ad5d` (roadmap reorder).
+Docs-only commits: `71121bf` (first plan), `0c9ad5d` (roadmap reorder), `c0458c1` (plan refresh, real README, agent notes, backlog).
 
 **Lesson from checkpoint 7:** a commit once left four new content files untracked while `index.ts` imported them, which breaks a fresh clone. Run `git status` before every commit and stage new files.
 
@@ -303,7 +303,7 @@ Most of AZ-400 is **not Azure resources**. It is DevOps practice and tooling: Gi
 
 Parts of AZ-400 that **are** Azure services and fit the current model (to be confirmed against the live list): Azure Key Vault, Azure App Configuration (Feature Manager), managed identities and service principals, Azure Container Registry and AKS, Azure Monitor with Application Insights, VM / Container Insights, Defender for Cloud, Azure Deployment Environments, Azure Automation State Configuration and Azure Machine Configuration, plus deployment slots and load balancing (already in the catalog).
 
-### Proposed model (needs the user's confirmation)
+### Proposed model (refined in `docs/SIMULATOR.md` section 9; still needs the owner's confirmation, see section 14)
 
 - **Entry kinds:** add a `kind` field: `azure-resource` (today's entries), `devops-tool` (Azure DevOps and GitHub features such as Azure Pipelines, Azure Repos, Azure Boards, Azure Artifacts, GitHub Actions), and `concept` (practices such as deployment strategies or branching strategies). Each kind gets its own required fields, so a concept does not need a region or a Bicep example.
 - **Exam tags:** replace the single exam-domain `category` with two things: a service-area category (Networking, Compute, Storage, DevOps, Security, Monitoring, and so on) and an `exams` list (`az-104`, `az-400`, later others). Each entry can carry exam notes per exam.
@@ -391,12 +391,12 @@ Decided 2026-10-25. Built in checkpoints 17 and 18. **Designed in checkpoint 10:
 
 - **What it is:** a terminal in the page that parses `az` commands and runs them against the in-browser world, the same engine the create pages use. A command and a form must produce the same result, because both call the same engine functions.
 - **Parser:** `az <group> [<subgroup>] <command> --flag value`, with the documented short flags, `--help`, and `--output` (`json`, `table`, `tsv`). Output shapes follow the Learn reference examples. Where Learn does not document an output, the shell says so instead of inventing one.
-- **`--query`:** JMESPath, as the real CLI uses. Use an existing JMESPath library if the spike (checkpoint 10) confirms it is suitable.
+- **`--query`:** JMESPath, as the real CLI uses. Decided in checkpoint 10: the official `jmespath.js` 0.16.0, pinned, with a conformance test (`docs/CLOUDSHELL.md` section 9).
 - **Session state:** simulated `az login`, `az account show / set`, `az configure --defaults` (group, location). Defaults are stored with the world in `localStorage`.
 - **First command groups:** `account`, `group`, `network vnet / subnet / nsg / public-ip / route-table / vnet peering / private-dns`, `vm`, `storage account`, `role assignment / role definition`, later `deployment`, `webapp`, `container`.
 - **Command registry from the catalog:** the CLI examples in the catalog entries are already checked against Learn. The shell should accept at least every flag those examples use, and a test must run every catalog CLI example against the engine and fail the build if it errors. That keeps the docs and the simulation from drifting apart.
 - **Errors:** use the real, documented error codes and messages for the common failures (resource not found, name not available, authorization failed with the role that was missing). Authorization failures use the RBAC evaluator from checkpoint 13.
-- **Deployments (checkpoint 18):** `az deployment group create` with an ARM JSON template, `what-if` output, and export of the sandbox as ARM. Bicep needs a Bicep-to-ARM compiler in the browser. The checkpoint 10 spike decides whether that is possible. If not, ship ARM JSON only and show the Bicep example as read-only.
+- **Deployments (checkpoint 18):** `az deployment group create` with an ARM JSON template, `what-if` output, and export of the sandbox as ARM. Decided in checkpoint 10: ARM JSON only in v1; Bicep examples are compiled to ARM at build time (`docs/CLOUDSHELL.md` section 12).
 - **PowerShell flavour:** a second shell mode (`New-AzResourceGroup`, `Get-AzVM`) is possible later, since the catalog already has PowerShell examples. Decide after Cloud Shell v2.
 - **Labelling:** the shell always shows a banner that it is simulated, so nobody mistakes it for a real subscription.
 - **Not planned:** running real shell commands, anything that needs a real network, and Azure features that are not documented well enough to simulate honestly.

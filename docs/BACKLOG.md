@@ -10,7 +10,7 @@ Current catalog (29): Resource Group, Virtual Machine, VM Scale Set, App Service
 
 - Tenant, Management group, Subscription (checkpoint 11)
 - Role definition, Role assignment, Custom role, Managed identity, Service principal, User, Group (checkpoint 13)
-- Tags, Resource locks, Azure Policy (checkpoint 14)
+- Tags, Resource locks, Azure Policy (checkpoint 14; Policy needs its own research report first, see `docs/SIMULATOR.md` section 5)
 
 ## Priority 2: likely on AZ-104 or AZ-400 (confirm against the live lists)
 

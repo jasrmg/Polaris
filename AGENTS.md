@@ -19,4 +19,6 @@ Rules that apply to every session (full list in `docs/PLAN.md` section 3):
 - Catalog content must come from **Microsoft Learn or other official Microsoft docs only**. Verify every claim. If it cannot be verified, reword it to what the docs say or delete it.
 - Before asking for a commit, run `npm run check:snippets` (needs the Bicep CLI), `npm run lint`, `npx tsc --noEmit` and `npm run build`, then check the app in a browser, including a phone-width view.
 - Do not kill a dev server you did not start. The owner often has one running on port 3000.
+- Sandbox work follows the design docs: `docs/SIMULATOR.md`, `docs/RBAC.md`, `docs/CLOUDSHELL.md` (evidence in `docs/research/`). If code and those docs disagree, change the doc first and tell the owner. Items marked "to confirm" in `docs/PLAN.md` section 14 are not decided.
+- **Never commit raw exports from a real Azure account** (they contain subscription IDs). Keep them in `data/raw/` (git-ignored) or outside the repo, and strip IDs before anything is shipped.
 - Keep the docs current: update `docs/PLAN.md` (sections 0, 5, 6, 9) and `README.md` at the end of each checkpoint.
