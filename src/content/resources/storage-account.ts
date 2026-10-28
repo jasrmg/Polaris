@@ -1,4 +1,3 @@
-import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const storageAccount: ResourceInput = {
@@ -6,6 +5,9 @@ export const storageAccount: ResourceInput = {
   name: "Storage Account",
   type: "Microsoft.Storage/storageAccounts",
   category: "storage",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "Database",
 
@@ -114,20 +116,27 @@ resource sa 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "The account name is global: it must be unique across all of Azure, not just your subscription.",
     "ZRS copies data across availability zones in one region. GRS copies to a paired region. GZRS combines both.",
     "You can add or remove geo-redundancy in the portal, PowerShell or CLI. Adding or removing zone redundancy needs a conversion, which you can start yourself in most regions or request through support. Some account types need a manual migration.",
     "Access is controlled by Entra ID RBAC, shared access signatures (SAS) and account keys. Prefer Entra ID, use a user delegation SAS when you need SAS (blobs only), and avoid account keys.",
     "If you leave out --sku, az storage account create uses Standard_RAGRS, not LRS. The default kind is StorageV2.",
   ],
+    },
+  ],
 
   related: ["resource-group", "virtual-machine", "blob-container", "file-share", "service-endpoint", "private-endpoint"],
   docsUrl:
     "https://learn.microsoft.com/azure/storage/common/storage-account-create",
 
-  simulator: [
-    { key: "name", label: "Storage account name", type: "text", required: true, default: "stpolarisdemo001", help: "3-24 characters, lowercase letters and digits only." },
-    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: regionIds },
-    { key: "redundancy", label: "Redundancy", type: "select", required: true, default: "Standard_LRS", options: ["Standard_LRS", "Standard_ZRS", "Standard_GRS", "Standard_GZRS"] },
-  ],
+  simulator: {
+    armType: "Microsoft.Storage/storageAccounts",
+    apiVersion: "2023-05-01",
+    nameRule: "storage-account",
+    provisioning: ["Creating", "ResolvingDNS", "Succeeded"],
+    provisioningSource: "https://learn.microsoft.com/en-us/rest/api/storagerp/storage-accounts/get-properties",
+  },
 };

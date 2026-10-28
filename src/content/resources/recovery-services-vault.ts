@@ -1,11 +1,13 @@
-import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const recoveryServicesVault: ResourceInput = {
   slug: "recovery-services-vault",
   name: "Recovery Services Vault",
   type: "Microsoft.RecoveryServices/vaults",
-  category: "monitor-backup",
+  category: "backup-recovery",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "DatabaseBackup",
 
@@ -174,6 +176,9 @@ resource vmPolicy 'Microsoft.RecoveryServices/vaults/backupPolicies@2024-10-01' 
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Same-region rule: the vault must be in the same region as the data source it protects. When you pick VMs, only VMs in the vault's region are listed. With VMs in several regions you need a vault in each region. Moving a vault across regions is not supported. Moving vaults between subscriptions or resource groups in the same subscription is.",
     "Storage redundancy: the default is geo-redundant storage (GRS). The other options are locally redundant (LRS, cheaper, for when Azure is not your primary backup target) and zone-redundant (ZRS, for data availability without downtime in a region and data residency). Change it before you configure the first backup. After backup items exist, the option is disabled, and the only way out is the workarounds Learn describes, such as stopping protection and re-creating in a new vault.",
     "Cross Region Restore (CRR) lets you restore Azure VMs in the paired secondary region at any time, without waiting for Azure to declare a disaster. It works only on a GRS vault. You enable it under Properties, then Backup Configuration, then Update. It costs extra, and Learn says it cannot be reverted to GRS or LRS after protection starts for the first time. Without CRR, secondary-region data on a GRS vault is only usable when Azure declares a disaster.",
@@ -190,14 +195,15 @@ resource vmPolicy 'Microsoft.RecoveryServices/vaults/backupPolicies@2024-10-01' 
     "You cannot move backup data between vaults, and a VM can be in only one vault at a time. To change a VM's vault, stop backup and then protect the VM in the new vault. Stopping with Retain data keeps the recovery points until you delete them, and you pay for them.",
     "Data is encrypted with platform-managed keys by default. To use a customer-managed key you must set it before you protect any item, and Learn says it cannot be reversed afterwards.",
   ],
+    },
+  ],
 
   related: ["resource-group", "virtual-machine", "storage-account", "file-share", "log-analytics-workspace", "alert-rule", "virtual-network"],
   docsUrl: "https://learn.microsoft.com/azure/backup/backup-azure-recovery-services-vault-overview",
 
-  simulator: [
-    { key: "name", label: "Vault name", type: "text", required: true, default: "rsv-polaris", help: "2 to 50 characters. Must start with a letter and use only letters, numbers and hyphens. Unique within the subscription." },
-    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: regionIds, help: "Must be the same region as the data source (such as the VM) that you want to protect." },
-    { key: "storageRedundancy", label: "Storage replication type", type: "select", required: true, default: "Geo-redundant", options: ["Geo-redundant", "Locally-redundant", "Zone-redundant"], help: "Geo-redundant is the default. You can only change it before the first backup is configured." },
-    { key: "crossRegionRestore", label: "Cross Region Restore", type: "boolean", required: false, default: false, help: "Only available when the vault is geo-redundant. Costs extra." },
-  ],
+  simulator: {
+    armType: "Microsoft.RecoveryServices/vaults",
+    apiVersion: "2024-10-01",
+    nameRule: "recovery-services-vault",
+  },
 };

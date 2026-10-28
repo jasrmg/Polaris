@@ -5,6 +5,9 @@ export const azureDnsZone: ResourceInput = {
   name: "Azure DNS Zone",
   type: "Microsoft.Network/dnsZones",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "BookOpen",
 
@@ -87,6 +90,9 @@ resource www 'Microsoft.Network/dnsZones/A@2018-05-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "A DNS zone is a global service, not bound to a region. The resource group location does not affect it, and Bicep/ARM use location 'global'.",
     "After creating the zone you must delegate the domain: set the registrar's NS records to all four Azure name servers. Until you do, internet users are not directed to your zone.",
     "The apex NS and SOA record sets are created automatically. You cannot remove or change the Azure name servers in the apex NS record set.",
@@ -95,7 +101,14 @@ resource www 'Microsoft.Network/dnsZones/A@2018-05-01' = {
     "Alias records work at the zone apex, where a CNAME is not allowed. They update automatically if the target IP changes and become empty if the target is deleted.",
     "Azure DNS does not support buying domains. Buy through App Service domains or another registrar, then host the domain in Azure DNS.",
   ],
+    },
+  ],
 
   related: ["private-dns-zone", "public-ip-address"],
   docsUrl: "https://learn.microsoft.com/azure/dns/dns-zones-records",
+  simulator: {
+    armType: "Microsoft.Network/dnsZones",
+    apiVersion: "2018-05-01",
+    nameRule: "azure-dns-zone",
+  },
 };

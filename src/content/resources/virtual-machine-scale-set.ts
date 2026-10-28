@@ -1,4 +1,3 @@
-import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const virtualMachineScaleSet: ResourceInput = {
@@ -6,6 +5,9 @@ export const virtualMachineScaleSet: ResourceInput = {
   name: "Virtual Machine Scale Set",
   type: "Microsoft.Compute/virtualMachineScaleSets",
   category: "compute",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "Layers",
 
@@ -336,6 +338,9 @@ resource autoscale 'Microsoft.Insights/autoscalesettings@2022-10-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "The orchestration mode is chosen when the scale set is created and cannot be changed or updated later. Learn recommends Flexible for new scale sets, and az vmss create defaults to Flexible. The portal, CLI and PowerShell quickstarts are labeled Uniform with a note recommending Flexible. Learn does not announce a Uniform retirement, and there is no tool to convert a Uniform scale set to Flexible.",
     "Flexible instances are standard VMs (Microsoft.Compute/virtualMachines) that you manage with the normal VM commands. Uniform instances are scale set VMs (Microsoft.Compute/virtualMachineScaleSets/virtualMachines) managed through the scale set VM API. Flexible also lets you add or remove an existing VM, and Uniform does not.",
     "Instance limits: a Flexible scale set holds up to 1,000 VMs. That falls to 200 for VM sizes without memory preserving updates when you use fixed fault domain spreading (more than one fault domain). With the portal quickstart you can set the initial count up to 1000. Learn also says the limit is 600 if you build from a managed image.",
@@ -351,6 +356,8 @@ resource autoscale 'Microsoft.Insights/autoscalesettings@2022-10-01' = {
     "Networking: a scale set works with a Standard load balancer for layer 4 or Application Gateway for layer 7 and TLS termination. Flexible does not support the Basic load balancer or NAT pools (use NAT rules). Flexible does not get default outbound access, so give it explicit outbound access such as a NAT gateway.",
     "Flexible scale sets monitor application health with the Application Health Extension, not a load balancer health probe. Flexible supports user assigned managed identity only. Uniform allows system assigned or user assigned.",
   ],
+    },
+  ],
 
   related: [
     "resource-group",
@@ -364,12 +371,9 @@ resource autoscale 'Microsoft.Insights/autoscalesettings@2022-10-01' = {
   ],
   docsUrl: "https://learn.microsoft.com/azure/virtual-machine-scale-sets/overview",
 
-  simulator: [
-    { key: "name", label: "Scale set name", type: "text", required: true, default: "vmss-web" },
-    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: regionIds },
-    { key: "orchestrationMode", label: "Orchestration mode", type: "select", required: true, default: "Flexible", options: ["Flexible", "Uniform"], help: "Cannot be changed after creation. Flexible is the recommended mode." },
-    { key: "image", label: "Image", type: "select", required: true, default: "Ubuntu 22.04 LTS", options: ["Ubuntu 22.04 LTS", "Windows Server 2022"] },
-    { key: "size", label: "Size", type: "select", required: true, default: "Standard_D2s_v5", options: ["Standard_D2s_v5", "Standard_D4s_v5"] },
-    { key: "instanceCount", label: "Instance count", type: "number", required: true, default: 2, help: "The initial number of instances." },
-  ],
+  simulator: {
+    armType: "Microsoft.Compute/virtualMachineScaleSets",
+    apiVersion: "2024-03-01",
+    nameRule: "virtual-machine-scale-set",
+  },
 };

@@ -5,6 +5,9 @@ export const applicationSecurityGroup: ResourceInput = {
   name: "Application Security Group",
   type: "Microsoft.Network/applicationSecurityGroups",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "Users",
 
@@ -138,14 +141,24 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2023-09-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "An ASG is attached to a network interface, not to a subnet.",
     "All network interfaces in one ASG must be in the same virtual network.",
     "A rule can use an ASG as both source and destination, but the NICs in both ASGs must be in the same VNet.",
     "A NIC can be in more than one ASG, up to the Azure limit.",
     "ASGs let you add a VM to a tier by changing its NIC, with no edits to the NSG.",
   ],
+    },
+  ],
 
   related: ["network-security-group", "virtual-machine"],
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-network/application-security-groups",
+  simulator: {
+    armType: "Microsoft.Network/applicationSecurityGroups",
+    apiVersion: "2023-09-01",
+    nameRule: "application-security-group",
+  },
 };

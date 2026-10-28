@@ -5,6 +5,9 @@ export const serviceEndpoint: ResourceInput = {
   name: "Service Endpoint",
   type: "Subnet setting (serviceEndpoints)",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "Plug",
 
@@ -130,6 +133,9 @@ resource st 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "A service endpoint is enabled per subnet and per service, for example Microsoft.Storage or Microsoft.Sql.",
     "You must also add a VNet rule on the service's firewall. The endpoint alone does not restrict anything.",
     "The service keeps its public IP address and DNS still resolves to it. Traffic takes the Azure backbone and the service sees the subnet's private address as the source.",
@@ -140,8 +146,14 @@ resource st 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     "Service endpoint policies filter traffic from the subnet to specific storage accounts. They apply to Azure Storage and not to on-premises traffic.",
     "Enabling or removing an endpoint switches the source IP from public to private. Existing connections close and old firewall rules based on public IPs stop working.",
   ],
+    },
+  ],
 
   related: ["subnet", "storage-account", "private-endpoint"],
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-network/virtual-network-service-endpoints-overview",
+  simulator: {
+    armType: "Microsoft.Network/virtualNetworks/subnets",
+    apiVersion: "2023-09-01",
+  },
 };

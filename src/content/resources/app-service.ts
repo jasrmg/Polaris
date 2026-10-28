@@ -1,4 +1,3 @@
-import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const appService: ResourceInput = {
@@ -6,6 +5,9 @@ export const appService: ResourceInput = {
   name: "App Service (Web App)",
   type: "Microsoft.Web/sites",
   category: "compute",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "Globe",
 
@@ -152,6 +154,9 @@ resource webApp 'Microsoft.Web/sites@2024-04-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Deployment slots need the Standard, Premium or Isolated tier. Free, Shared and Basic have none. Standard allows 5 slots per app, and Premium and Isolated allow 20. Slots cost nothing extra, and each slot is a live app with its own host name. A new slot starts with no content and gets 0% of traffic.",
     "A swap warms up the source slot, then switches the routing rules, so the target slot sees no downtime. Swap with preview pauses after the first phase so you can test the staging slot with the target slot's settings. To roll back, swap the same two slots again. Auto swap can swap into production every time you push to a slot.",
     "App settings and connection strings move with the content in a swap. To pin one to its slot, select Deployment slot setting (Settings > Environment variables), or use --slot-settings in the CLI. Custom domain names, scale settings, managed identities and virtual network integration do not swap.",
@@ -163,6 +168,8 @@ resource webApp 'Microsoft.Web/sites@2024-04-01' = {
     "Always On is off by default, so an idle app is unloaded after 20 minutes without requests and the next request is slow. Always On needs Basic tier or higher.",
     "Deployment options include az webapp deploy with a zip file, FTPS (Deployment Center > FTPS Credentials), Visual Studio Code, and CI/CD with GitHub Actions or Azure Pipelines.",
     "Under Monitoring, App Service logs turns on application logging and Log stream shows it live. On Linux, application logs go to the file system only. Diagnostic settings send logs to a Log Analytics workspace, a storage account or an event hub, and adding one restarts the app. Diagnose and solve problems is the guided troubleshooter.",
+  ],
+    },
   ],
 
   related: [
@@ -177,10 +184,9 @@ resource webApp 'Microsoft.Web/sites@2024-04-01' = {
   ],
   docsUrl: "https://learn.microsoft.com/azure/app-service/overview",
 
-  simulator: [
-    { key: "name", label: "Name", type: "text", required: true, default: "app-polaris-demo", help: "Must be unique across all of Azure. It becomes <name>.azurewebsites.net." },
-    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: regionIds },
-    { key: "runtimeStack", label: "Runtime stack", type: "select", required: true, default: "Node 24 LTS", options: ["Node 24 LTS", ".NET 8 (LTS)"] },
-    { key: "appServicePlan", label: "App Service plan", type: "text", required: true, default: "plan-polaris", help: "The plan sets the pricing tier. Deployment slots need Standard or higher." },
-  ],
+  simulator: {
+    armType: "Microsoft.Web/sites",
+    apiVersion: "2024-04-01",
+    nameRule: "app-service",
+  },
 };

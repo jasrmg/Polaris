@@ -1,4 +1,3 @@
-import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const appServicePlan: ResourceInput = {
@@ -6,6 +5,9 @@ export const appServicePlan: ResourceInput = {
   name: "App Service Plan",
   type: "Microsoft.Web/serverfarms",
   category: "compute",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "LayoutGrid",
 
@@ -97,6 +99,9 @@ resource plan 'Microsoft.Web/serverfarms@2024-04-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Scale up changes the pricing tier or size of the plan, which gives more CPU, memory and disk or extra features. Scale out changes the number of VM instances. Both apply to every app in the plan and take only seconds, with no code change or redeploy.",
     "Free and Shared run apps on a shared VM with other customers' apps, give each app CPU quotas, and cannot scale out. Free allows 3 CPU minutes per 5 minutes and 60 per day. Shared allows 3 per 5 minutes and 240 per day.",
     "Maximum instances when scaling out: Basic 3, Standard 10, Premium v2, v3 and v4 up to 30, and Isolated up to 100. Manual scale out starts at Basic. Autoscale needs Standard or higher.",
@@ -109,15 +114,15 @@ resource plan 'Microsoft.Web/serverfarms@2024-04-01' = {
     "Deleting the last app in a plan also deletes the plan by default. If you keep the plan, set it to the Free tier so you are not charged. A plan with no apps still bills because it reserves its VM instances.",
     "Apps per plan: Free allows 10 and Shared allows 100. Basic and above have no fixed limit, but the number you can fit depends on the apps' activity and the VM size. Learn gives a rule of thumb of 8 apps for B1, S1 and P1v2 and 16 for P1v3. Active slots count as apps.",
   ],
+    },
+  ],
 
   related: ["resource-group", "app-service", "virtual-machine", "virtual-network", "virtual-machine-scale-set", "container-apps"],
   docsUrl: "https://learn.microsoft.com/azure/app-service/overview-hosting-plans",
 
-  simulator: [
-    { key: "name", label: "App Service plan name", type: "text", required: true, default: "plan-polaris-demo" },
-    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: regionIds },
-    { key: "os", label: "Operating System", type: "select", required: true, default: "Linux", options: ["Linux", "Windows"] },
-    { key: "sku", label: "Pricing tier", type: "select", required: true, default: "B1", options: ["F1", "B1", "S1", "P0v3", "P1v3"] },
-    { key: "instances", label: "Instance count", type: "number", required: true, default: 1, help: "Scale out adds instances. Free and Shared cannot scale out." },
-  ],
+  simulator: {
+    armType: "Microsoft.Web/serverfarms",
+    apiVersion: "2024-04-01",
+    nameRule: "app-service-plan",
+  },
 };

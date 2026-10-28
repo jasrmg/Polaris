@@ -6,16 +6,16 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 ## 0. Start here (handoff summary)
 
-**Last updated:** 2026-10-27, during checkpoint 10. Checkpoints 1-9 are committed (last: `465731d`). The checkpoint 10 design documents are written and **waiting for the owner's review**; nothing is built.
+**Last updated:** 2026-10-28. Checkpoints 1-10 are committed (design docs `4f8e0f5`, doc cleanup `ed05721`). Checkpoint 11 (schema migration and hierarchy entries) is done in the working tree and not committed.
 
 **What we are building.** Polaris is a free, browser-only place to learn and try out Azure. It has two parts:
 
-1. **Atlas (built, 29 entries so far):** a catalog of Azure resources. Each has a plain-English definition, an analogy, when to use it, prerequisites, examples (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
+1. **Atlas (built, 32 entries):** a catalog of Azure resources. Each has a plain-English definition, an analogy, when to use it, prerequisites, examples (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
 2. **Sandbox (not started, the core of the product):** create and configure those resources in a simulated tenant, including RBAC, with a simulated Cloud Shell that runs `az` commands against the in-browser world. **Nothing is ever hosted and nothing ever talks to real Azure.** The goal is to get "the feel" of Azure for free.
 
 **Who it is for.** The owner is studying for AZ-104 and then AZ-400, but the product is **not exam-specific**. Exams are tags and study aids. Scope is "as many Azure resources and services as possible", RBAC included. **Polaris is meant to become multi-cloud, but version 1 contains only Azure.** As the owner studies other cloud providers (AWS first, then possibly GCP or others) they will be added, only after Azure v1 ships and Azure is covered (section 10). Design choices made now should not block that: keep Azure-specific details (hierarchy levels, example formats, regions, rule packs) separable from the generic engine and content shape.
 
-**Where we are.** Checkpoints 1-9 are done and committed. The catalog has 29 entries (section 5). **Checkpoint 10 (design the sandbox, documents only) is written, not yet reviewed:** `docs/SIMULATOR.md`, `docs/RBAC.md`, `docs/CLOUDSHELL.md` and six evidence reports in `docs/research/`. The decisions the owner already made are in section 14; the assistant's proposals that still need the owner's yes or no are listed in section 14 as "to confirm". The next step after the owner approves is **checkpoint 11: schema migration and hierarchy entries** (section 6). Nothing is built until then.
+**Where we are.** Checkpoints 1-10 are done and committed. The catalog schema now has `kind`, `exams`, `tier` and service-area categories (checkpoint 11, see section 5). Tenant, Management group and Subscription are catalog entries. The sandbox engine is still not built. The next step after checkpoint 11 is committed is **checkpoint 12: engine core** (section 6).
 
 **Decisions already made by the owner (2026-10-27, details in section 14):** the Cloud Shell runs ARM JSON only in v1 (Bicep is compiled to ARM at build time); the sandbox has switchable identities ("act as"); one tenant with a default subscription and the ability to add subscriptions and management groups; built-in roles ship only if Learn documents them, with permissions taken from the owner's own `az role definition list` export.
 
@@ -104,9 +104,10 @@ Batching tip: verification of several entries can be split across read-only suba
 
 - **Next.js 16.4.3** App Router + Turbopack, `output: "export"`, `trailingSlash: true`. React 19, Tailwind v4, shadcn/ui (Base UI), framer-motion, fuse.js, zod 4, next-themes, lucide-react.
 - **Content** is typed TypeScript, validated by Zod at build time:
-  - `src/content/schema.ts`: `resourceSchema` (slug, name, type, category, scope, icon, tagline <= 120 chars, definition, analogy, whenToUse, notFor, prerequisites, example, examNotes, related, docsUrl, optional simulator fields).
+  - `src/content/schema.ts`: `resourceSchema` (slug, name, type, `kind`, `directoryType` for directory objects, service-area `category`, scope, `tier`, `exams`, icon, tagline <= 120 chars, definition, analogy, whenToUse, notFor, prerequisites, example, `examNotes` as `{ exam, points[] }`, related, docsUrl, slim `simulator` block for tiers 1 and 2).
+  - `src/content/name-rules.ts`: name constraints keyed by the simulator `nameRule`. Source is the Learn naming-rules page.
   - `src/content/resources/<slug>.ts`: one file per resource. Register it in `src/content/index.ts`.
-  - `src/content/index.ts` loader: checks slugs are unique and that `related` and `prerequisites[].slug` point at real entries.
+  - `src/content/index.ts` loader: checks slugs are unique, that `related` and `prerequisites[].slug` point at real entries, that `nameRule` exists, and that `simulator.apiVersion` appears in the entry's Bicep or ARM example.
   - `src/content/hierarchy.ts`, `regions.ts`, `summary.ts`, `payload.ts`: hierarchy levels, region list, list-card shape, detail payload.
 - **Icons:** `src/components/resource-icon.tsx` maps a lucide icon name to a component. Add new icon names there (fallback is Cloud).
 - **Routes:** home (hierarchy map + searchable catalog), `/resources/<slug>/` (full page), `/data/resources/<slug>` (static JSON used by the client modal). The modal opens via the History API and is shareable by URL.
@@ -121,17 +122,20 @@ Batching tip: verification of several entries can be split across read-only suba
 - Lucide icon names used in content (`icon: "..."`) must be added to `src/components/resource-icon.tsx`. `npx tsc --noEmit` fails if a name does not exist in lucide.
 - Long unbroken words (for example `Microsoft.Compute/virtualMachineScaleSets/virtualMachines`) once stretched the detail page on phones. Text spans in `resource-detail.tsx` use `min-w-0 [overflow-wrap:anywhere]`. Keep that when adding new text blocks.
 
-## 5. Current catalog (29 entries)
+## 5. Current catalog (32 entries)
 
 | Category | Entries |
 |---|---|
-| Identity & Governance | Resource Group |
-| Compute (6) | Virtual Machine, Virtual Machine Scale Set, App Service Plan, App Service (Web App), Container Instances, Container Apps |
-| Storage (3) | Storage Account, Blob Container, Azure Files Share |
-| Monitor & Backup (5) | Log Analytics Workspace, Azure Monitor Alert Rule, Action Group, Network Watcher, Recovery Services Vault |
-| Networking (14) | Virtual Network, Subnet, Public IP Address, Network Security Group, Application Security Group, Route Table, Virtual Network Peering, Network Virtual Appliance, Azure DNS Zone, Private DNS Zone, Load Balancer, Azure Bastion, Service Endpoint, Private Endpoint |
+| Identity & access (1) | Tenant (directory object, tier 3) |
+| Management & governance (3) | Management group, Subscription (both tier 3), Resource Group (tier 1) |
+| Compute (4) | Virtual Machine, Virtual Machine Scale Set, App Service Plan, App Service (Web App). All tier 2. |
+| Containers (2) | Container Instances, Container Apps. Both tier 2. |
+| Storage (3) | Storage Account, Blob Container, Azure Files Share. All tier 2. |
+| Monitoring (3) | Log Analytics Workspace, Azure Monitor Alert Rule, Action Group. All tier 2. |
+| Backup & recovery (1) | Recovery Services Vault (tier 2) |
+| Networking (15) | Virtual Network, Subnet, Public IP Address, Network Security Group, Application Security Group, Route Table, Virtual Network Peering, Network Virtual Appliance, Azure DNS Zone, Private DNS Zone, Load Balancer, Service Endpoint, Private Endpoint, Network Watcher (tier 1), Azure Bastion (tier 2) |
 
-The hierarchy map still shows Tenant, Management group and Subscription as "Not in catalog yet".
+Tier 1 is behaviour, tier 2 is lifecycle, tier 3 is catalog only. The assignment is the one in `docs/SIMULATOR.md` section 7, plus the three hierarchy entries at tier 3 because they have no pinned API version in an example yet. Every existing entry is tagged `az-104`. Network Watcher is under Networking.
 
 ## 6. Roadmap
 
@@ -141,21 +145,23 @@ Reordered 2026-10-25. Each checkpoint ends with the checks in section 3 and a co
 
 ### Done
 
-Checkpoints 1-9 (see the status log in section 9): scaffold, theming, schema, home page, modal and pages, networking, compute, storage and monitor and backup. **29 entries.** Catalog content is fully verified against Learn up to this point.
+Checkpoints 1-10 (see the status log in section 9). Checkpoint 11 migrates the schema and adds the hierarchy entries.
 
-### Next
+### Finished in checkpoints 10 and 11
 
-**Checkpoint 10 - Design the sandbox (documents and decisions, no UI)** *(written 2026-10-27, awaiting the owner's review)*
+**Checkpoint 10 - Design the sandbox (documents and decisions, no UI)** *(done, 2026-10-27)*
 - Written: `docs/SIMULATOR.md` (world, pipeline, lifecycle, networking decisions N1-N17, tiers, schema decisions in its section 9, persistence, spike A verdict), `docs/RBAC.md` (directory, evaluator, roles dataset rule and import process, act as), `docs/CLOUDSHELL.md` (grammar, mini-shell, outputs, `--query`, errors, command waves, deployments and what-if, spike B, C and D verdicts), and the evidence in `docs/research/`.
 - Spike verdicts: **A** forms from `Azure/bicep-types-az` at build time plus a hand-written overlay (yes, with limits); **B** Bicep can compile in a browser (about 48.5 MB gzipped) but v1 ships ARM JSON only; **C** use `jmespath.js` 0.16.0, pinned, with a conformance test; **D** `az` help text may be reused (MIT), extracted only for the supported commands, with a fallback to hand-curated summaries.
 - **Good checkpoint for you to read and push back on.** Nothing gets built until you agree. The things to check are listed in section 14 under "To confirm".
 
-**Checkpoint 11 - Schema migration and hierarchy entries**
-- Add `kind` (four values: `azure-resource`, `directory-object`, `devops-tool`, `concept`), `exams`, `tier` and service-area categories, exactly as proposed in `docs/SIMULATOR.md` section 9 (once the owner confirms). Replace the ad hoc `simulator` array with the single object defined there. Migrate all existing entries (tier assignment is in `docs/SIMULATOR.md` section 7). Add filters (by exam, by kind, by tier) to the catalog.
-- Add the hierarchy entries: Tenant, Management group, Subscription (containers).
-- Dependency graph view on each page, and a light accessibility pass.
+**Checkpoint 11 - Schema migration and hierarchy entries** *(done in the working tree, 2026-10-28)*
+- `kind`, `exams`, `tier` and service-area categories, as confirmed. Slim `simulator` block (ARM type, API version, name rule, provisioning only where Learn enumerates it). Create-form fields stay in checkpoint 15.
+- Filters by exam, kind and tier. A Dependencies tab on each entry. A skip link.
+- Tenant, Management group and Subscription, checked against Learn. They are tier 3.
 
-**Checkpoint 12 - Engine core**
+### Next
+
+**Checkpoint 12 - Engine core** *(next)*
 - Pure TypeScript engine, no React: resource graph, create / update / delete / start / stop, lifecycle states (Creating -> Running, Stopped, Deallocated), name and CIDR validation, parent and region rules.
 - `localStorage` persistence with a versioned schema, reset, import and export.
 - Unit tests for every rule. Each rule carries a comment with its Learn URL.
@@ -245,8 +251,9 @@ These were starting points, not verified facts.
 | 7 | Load Balancer, Bastion, Service Endpoint, Private Endpoint, plus a Learn verification pass over all 17 entries | Done | `58d885b` |
 | 8 | Compute: VM Scale Set, App Service Plan, App Service, Container Instances, Container Apps (22 entries). Also fixed long words stretching the detail page on phones. | Done | `83a50ba` |
 | 9 | Storage and monitor and backup: Blob Container, Azure Files Share, Log Analytics Workspace, Alert Rule, Action Group, Network Watcher, Recovery Services Vault (29 entries) | Done | `465731d` |
-| 10 | Design the sandbox (documents only): three design docs plus six research reports | **Written, awaiting owner review** | |
-| 11-20 | See roadmap in section 6 | Not started | |
+| 10 | Design the sandbox (documents only): three design docs plus six research reports | Done | `4f8e0f5` |
+| 11 | Schema migration, filters, dependency tab, Tenant, Management group, Subscription | **Done in the working tree, not committed** | |
+| 12-20 | See roadmap in section 6 | Not started | |
 
 Docs-only commits: `71121bf` (first plan), `0c9ad5d` (roadmap reorder), `c0458c1` (plan refresh, real README, agent notes, backlog).
 
@@ -412,16 +419,16 @@ Decided 2026-10-25. Built in checkpoints 17 and 18. **Designed in checkpoint 10:
 | Tenant size | One tenant, a default subscription, add more subscriptions and management groups |
 | Built-in roles | Only roles Learn documents; permissions from the owner's own API export; the other 471 API roles are a possible later opt-in list; effort scales with catalog (each entry gets a "roles that matter here" list) |
 | Next provider after AWS | Decided by what the owner studies next (unchanged) |
+| Schema (2026-10-28) | Four kinds, exam tags, service-area categories, tiers. Slim simulator block. Network Watcher is Networking. Tenant, Management group and Subscription are tier 3. |
 
 ### To confirm (the assistant's proposals, not yet agreed)
 
-1. **Schema** (`docs/SIMULATOR.md` section 9): four `kind` values (`azure-resource`, `directory-object`, `devops-tool`, `concept`), `exams` tags, the new service-area `category` ids, `tier` 1-3, and the single `simulator` object that replaces the ad hoc array. Also which tier each of the 29 current entries gets (section 7 there).
-2. **Networking defaults N1-N17** (`docs/SIMULATOR.md` section 6): where Learn pages disagree, the assistant picked one reading. The owner may overrule any row.
-3. **Starter world:** user "You" with Owner on the default subscription and the Global Administrator flag (`docs/SIMULATOR.md` section 10, `docs/RBAC.md` section 3).
-4. **Pipeline order** (parse, authenticate, authorize, subscription state, provider registration, locks, policy, validate, apply): a design choice, because Learn does not document the order (`docs/SIMULATOR.md` section 4.1).
-5. **Roles dataset licence approach** (`docs/RBAC.md` section 8.3): data comes from the API export, Learn is used only for the documented-role list, with a visible credit. This is not legal advice; the owner may want to confirm Microsoft's terms for a public site.
-6. **JMESPath library** (`docs/CLOUDSHELL.md` section 9): the original `jmespath.js` (unmaintained since 2022, Apache-2.0) with a conformance test, versus the maintained community fork (MPL-2.0, not byte-compatible).
-7. **`az` help text** (`docs/CLOUDSHELL.md` section 10): extract from MIT-licensed `azure-cli` for supported commands only, fallback to hand-curated summaries.
+1. **Networking defaults N1-N17** (`docs/SIMULATOR.md` section 6): where Learn pages disagree, the assistant picked one reading. The owner may overrule any row.
+2. **Starter world:** user "You" with Owner on the default subscription and the Global Administrator flag (`docs/SIMULATOR.md` section 10, `docs/RBAC.md` section 3).
+3. **Pipeline order** (parse, authenticate, authorize, subscription state, provider registration, locks, policy, validate, apply): a design choice, because Learn does not document the order (`docs/SIMULATOR.md` section 4.1).
+4. **Roles dataset licence approach** (`docs/RBAC.md` section 8.3): data comes from the API export, Learn is used only for the documented-role list, with a visible credit. This is not legal advice; the owner may want to confirm Microsoft's terms for a public site.
+5. **JMESPath library** (`docs/CLOUDSHELL.md` section 9): the original `jmespath.js` (unmaintained since 2022, Apache-2.0) with a conformance test, versus the maintained community fork (MPL-2.0, not byte-compatible).
+6. **`az` help text** (`docs/CLOUDSHELL.md` section 10): extract from MIT-licensed `azure-cli` for supported commands only, fallback to hand-curated summaries.
 
 ### Not decided yet
 

@@ -5,6 +5,9 @@ export const networkVirtualAppliance: ResourceInput = {
   name: "Network Virtual Appliance",
   type: "Microsoft.Network/networkInterfaces (IP forwarding enabled)",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "Router",
 
@@ -92,14 +95,24 @@ $nic | Set-AzNetworkInterface`,
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "IP forwarding is an Azure setting on each NIC that forwards traffic. The VM must also run an application that can forward the traffic, and you might need to enable forwarding in the guest OS.",
     "A UDR with next hop type VirtualAppliance and the private IP of the NVA's network interface is what sends traffic through it. Learn also uses Virtual appliance for Azure Firewall, a managed service, with the firewall's private IP.",
     "When the NVA is in a hub, the peerings must be configured to accept forwarded traffic (Allow forwarded traffic).",
     "To make an NVA highly available, run at least two behind an internal Standard Load Balancer with an HA ports rule.",
     "If traffic does not pass, check Effective routes, the NVA's NSG and Next hop in Network Watcher before blaming the appliance.",
   ],
+    },
+  ],
 
   related: ["route-table", "vnet-peering", "virtual-machine", "load-balancer"],
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-network/virtual-network-network-interface",
+  simulator: {
+    armType: "Microsoft.Network/networkInterfaces",
+    apiVersion: "2023-09-01",
+    nameRule: "network-interface",
+  },
 };

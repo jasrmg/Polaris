@@ -5,6 +5,9 @@ export const fileShare: ResourceInput = {
   name: "Azure Files Share",
   type: "Microsoft.Storage/storageAccounts/fileServices/shares",
   category: "storage",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "Files",
 
@@ -126,6 +129,9 @@ resource share 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Protocols: SMB works from Windows, Linux and macOS (SMB 3.1.1, 3.0 and 2.1). NFS (4.1) is for Linux workloads. One share cannot serve both, but one storage account can hold both kinds of share. The protocol is set at creation and cannot be changed later.",
     "NFS shares need the SSD (premium) media tier, so a FileStorage account. They support LRS and ZRS only, not GRS or GZRS. They have no identity-based authentication, no Azure File Sync and no Azure Backup. Clients must reach the share through a private endpoint, or through a service endpoint from an allowed subnet.",
     "NFS uses port 2049. Make sure on-premises firewalls allow it outbound and that network security groups on allowed virtual networks do not block it inbound.",
@@ -144,6 +150,8 @@ resource share 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01
     "Azure File Sync caches an SMB share on Windows Servers, on-premises or in Azure, and can tier cold files to the cloud. It needs a Storage Sync Service and an agent on each server. It works only with SMB shares in classic file shares. It is not supported with NFS shares.",
     "Newer option: the Microsoft.FileShares resource provider creates a share as a top-level resource with no storage account. It currently supports only NFS on SSD (LRS or ZRS) and the provisioned v2 model. Soft delete and customer-managed keys do not apply to it. This entry covers classic shares under Microsoft.Storage.",
   ],
+    },
+  ],
 
   related: [
     "storage-account",
@@ -157,11 +165,9 @@ resource share 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01
   ],
   docsUrl: "https://learn.microsoft.com/azure/storage/files/storage-files-introduction",
 
-  simulator: [
-    { key: "storageAccount", label: "Storage account", type: "text", required: true, default: "stpolarisdemo001", help: "The account that will hold the share. Pay-as-you-go shares need a StorageV2 account. Provisioned shares need a FileStorage account." },
-    { key: "name", label: "File share name", type: "text", required: true, default: "fs-polaris-demo", help: "Lowercase letters, numbers and single hyphens. Must start and end with a letter or number." },
-    { key: "protocol", label: "Protocol", type: "select", required: true, default: "SMB", options: ["SMB", "NFS"], help: "Set at creation and cannot be changed. NFS needs a FileStorage (SSD) account and network rules." },
-    { key: "accessTier", label: "Access tier", type: "select", required: false, default: "TransactionOptimized", options: ["TransactionOptimized", "Hot", "Cool", "Premium"], help: "Hot, Cool and TransactionOptimized apply to pay-as-you-go (StorageV2) shares. Premium applies to FileStorage accounts." },
-    { key: "quota", label: "Quota (GiB)", type: "number", required: false, default: 100, help: "Provisioned size. Provisioned v2 ranges from 32 GiB to 256 TiB and provisioned v1 from 100 GiB to 100 TiB." },
-  ],
+  simulator: {
+    armType: "Microsoft.Storage/storageAccounts/fileServices/shares",
+    apiVersion: "2023-05-01",
+    nameRule: "file-share",
+  },
 };

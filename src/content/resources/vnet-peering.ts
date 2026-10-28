@@ -5,6 +5,9 @@ export const vnetPeering: ResourceInput = {
   name: "Virtual Network Peering",
   type: "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "Link2",
 
@@ -119,6 +122,9 @@ resource eaToSea 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2023-
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Peering is non-transitive. Reaching a third network needs a direct peering, or routing through an NVA in the hub.",
     "A peering needs a link in each VNet. The first link shows Initiated, and both show Connected once the second link exists. Traffic does not flow until both are Connected.",
     "Virtual network peering is within one region. Global virtual network peering crosses regions. Both keep traffic on the Microsoft backbone and both support gateway transit.",
@@ -128,8 +134,15 @@ resource eaToSea 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2023-
     "Gateway transit lets a spoke use the hub's gateway. The hub link enables Allow gateway transit, the spoke link enables Use remote gateways. A VNet that has its own gateway cannot use a remote gateway.",
     "Peering does not resolve names across VNets with default Azure DNS. Use Azure Private DNS or a custom DNS server.",
   ],
+    },
+  ],
 
   related: ["virtual-network", "network-virtual-appliance", "private-dns-zone"],
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-network/virtual-network-peering-overview",
+  simulator: {
+    armType: "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+    apiVersion: "2023-09-01",
+    nameRule: "vnet-peering",
+  },
 };

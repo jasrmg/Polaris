@@ -5,6 +5,9 @@ export const azureBastion: ResourceInput = {
   name: "Azure Bastion",
   type: "Microsoft.Network/bastionHosts",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "Terminal",
 
@@ -150,6 +153,9 @@ resource bastion 'Microsoft.Network/bastionHosts@2023-09-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "The subnet must be named exactly AzureBastionSubnet and be /26 or larger. Every SKU except Developer needs it.",
     "The Bastion public IP must be Standard SKU and Static. The target VMs need no public IP.",
     "Bastion connects over TLS on port 443 from the browser. The VM's subnet NSG must allow RDP (3389) or SSH (22) from the AzureBastionSubnet, not from the internet.",
@@ -159,7 +165,14 @@ resource bastion 'Microsoft.Network/bastionHosts@2023-09-01' = {
     "If you put an NSG on AzureBastionSubnet you must create all the required rules: inbound 443 from Internet, 443 from GatewayManager, 443 from AzureLoadBalancer and 8080/5701 within VirtualNetwork; outbound 22/3389 to VirtualNetwork, 443 to AzureCloud, 8080/5701 within VirtualNetwork and 80 to Internet.",
     "Billing starts when Bastion is deployed, whatever the usage. Delete the host after a test.",
   ],
+    },
+  ],
 
   related: ["virtual-network", "public-ip-address", "virtual-machine"],
   docsUrl: "https://learn.microsoft.com/azure/bastion/bastion-overview",
+  simulator: {
+    armType: "Microsoft.Network/bastionHosts",
+    apiVersion: "2023-09-01",
+    nameRule: "azure-bastion",
+  },
 };

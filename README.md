@@ -15,7 +15,7 @@ Every fact in the catalog is checked against Microsoft Learn or other official M
 
 ## Status
 
-29 entries across compute, storage, networking, and monitor and backup. The sandbox design is written and waiting for the owner's review (`docs/SIMULATOR.md`, `docs/RBAC.md`, `docs/CLOUDSHELL.md`, evidence in `docs/research/`); nothing of it is built yet. See the roadmap in `docs/PLAN.md`.
+32 entries, including Tenant, Management group and Subscription. The sandbox design is in `docs/SIMULATOR.md`, `docs/RBAC.md` and `docs/CLOUDSHELL.md` (evidence in `docs/research/`). The simulator itself is not built yet. See the roadmap in `docs/PLAN.md`.
 
 ## Run it
 

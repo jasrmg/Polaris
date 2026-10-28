@@ -1,11 +1,13 @@
-import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const containerInstances: ResourceInput = {
   slug: "container-instances",
   name: "Container Instances",
   type: "Microsoft.ContainerInstance/containerGroups",
-  category: "compute",
+  category: "containers",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "Boxes",
 
@@ -153,6 +155,9 @@ resource containerGroup 'Microsoft.ContainerInstance/containerGroups@2023-05-01'
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "The top-level resource is the container group, not the single container. Containers in a group are scheduled on the same host and share a lifecycle, resources, local network and storage volumes. It is similar to a pod in Kubernetes. They reach each other through localhost.",
     "Restart policy has three values. Always is the default and always restarts. OnFailure restarts only on a nonzero exit code. Never does not restart after a successful exit (code 0). A container whose restart policy is Never or OnFailure and has finished shows Terminated. With Never, a nonzero exit code can still be restarted by the platform.",
     "Run-once tasks use OnFailure or Never so the group stops when the process ends, and billing stops with it. The restart policy applies to every container in the group.",
@@ -164,6 +169,8 @@ resource containerGroup 'Microsoft.ContainerInstance/containerGroups@2023-05-01'
     "Billing is per second for the CPU cores and memory you specify. The meter runs from the start of the first image pull (or a restart) until the whole group stops, so a stopped group is not billed.",
     "Pass settings with environment variables. For secrets use secureValue instead of value. A secure variable shows only its name in the portal and az container show, and can be read only from inside the container. A secret volume is another option.",
     "Container group IP addresses can change after a restart, so do not hard-code them. The group IP and FQDN are released when the group is deleted.",
+  ],
+    },
   ],
 
   related: [
@@ -178,13 +185,9 @@ resource containerGroup 'Microsoft.ContainerInstance/containerGroups@2023-05-01'
   docsUrl:
     "https://learn.microsoft.com/azure/container-instances/container-instances-overview",
 
-  simulator: [
-    { key: "name", label: "Container name", type: "text", required: true, default: "mycontainer" },
-    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: regionIds },
-    { key: "imageSource", label: "Image source", type: "select", required: true, default: "Quickstart images", options: ["Quickstart images"] },
-    { key: "image", label: "Container image", type: "select", required: true, default: "mcr.microsoft.com/azuredocs/aci-helloworld:latest (Linux)", options: ["mcr.microsoft.com/azuredocs/aci-helloworld:latest (Linux)"] },
-    { key: "restartPolicy", label: "Restart policy", type: "select", required: true, default: "Always", options: ["Always", "On failure", "Never"], help: "Always is the default. On failure restarts only after a nonzero exit code." },
-    { key: "dnsNameLabel", label: "DNS name label", type: "text", required: false, default: "aci-demo-polaris", help: "Must be unique within the region. The app is reachable at the label, the region and azurecontainer.io." },
-    { key: "dnsNameLabelScope", label: "DNS name label scope reuse", type: "select", required: false, default: "Tenant", options: ["Tenant", "Subscription", "Resource Group", "No reuse", "Any reuse"], help: "Any reuse is the least secure option." },
-  ],
+  simulator: {
+    armType: "Microsoft.ContainerInstance/containerGroups",
+    apiVersion: "2023-05-01",
+    nameRule: "container-instances",
+  },
 };

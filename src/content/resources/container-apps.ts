@@ -1,11 +1,13 @@
-import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const containerApps: ResourceInput = {
   slug: "container-apps",
   name: "Container Apps",
   type: "Microsoft.App/containerApps",
-  category: "compute",
+  category: "containers",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "Container",
 
@@ -206,6 +208,9 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "The environment is the shared boundary. Apps in one environment share the same virtual network and write logs to the same Log Analytics workspace. Use separate environments when apps must never share compute, or for isolation such as test versus production.",
     "Ingress visibility is per app. External lets the app be reached from outside its environment, and Internal limits it to other apps in the same environment. Whether external really means the internet depends on the environment: an internal environment has no public endpoint. You set that with --internal-only when you create the environment, and you cannot change it later.",
     "HTTP ingress is always exposed on port 443, and HTTP on port 80 redirects to HTTPS unless you allow insecure connections. You must set the target port to the port your container listens on. You do not need to create a load balancer or public IP. External TCP ingress needs an environment that uses a virtual network.",
@@ -219,18 +224,15 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
     "Choosing a container service: Container Apps for serverless microservices and event-driven apps, Container Instances for a single pod without scale or revisions, App Service for web apps and Azure Kubernetes Service when you need the Kubernetes API.",
     "To use the CLI, install the containerapp extension. The CLI quickstarts register the Microsoft.App and Microsoft.OperationalInsights providers. az containerapp up builds from source, creates a registry and an environment with a Log Analytics workspace, and deploys the app.",
   ],
+    },
+  ],
 
   related: ["resource-group", "container-instances", "app-service", "virtual-network", "subnet"],
   docsUrl: "https://learn.microsoft.com/azure/container-apps/overview",
 
-  simulator: [
-    { key: "name", label: "Container app name", type: "text", required: true, default: "ca-web" },
-    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: regionIds },
-    { key: "environment", label: "Container Apps environment", type: "text", required: true, default: "cae-polaris", help: "A new environment is created if it does not exist. Apps in one environment share a virtual network and a logging destination." },
-    { key: "image", label: "Container image", type: "text", required: true, default: "mcr.microsoft.com/k8se/quickstart:latest" },
-    { key: "ingress", label: "Ingress traffic", type: "select", required: true, default: "Accepting traffic from anywhere", options: ["Disabled", "Limited to Container Apps Environment", "Accepting traffic from anywhere"] },
-    { key: "targetPort", label: "Target port", type: "number", required: false, default: 80, help: "Required when ingress is enabled. The port your container listens on." },
-    { key: "minReplicas", label: "Minimum replicas", type: "number", required: true, default: 0, help: "0 allows the app to scale to zero." },
-    { key: "maxReplicas", label: "Maximum replicas", type: "number", required: true, default: 10 },
-  ],
+  simulator: {
+    armType: "Microsoft.App/containerApps",
+    apiVersion: "2024-03-01",
+    nameRule: "container-apps",
+  },
 };

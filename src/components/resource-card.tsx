@@ -25,9 +25,9 @@ export function ResourceCard({ resource, onOpen }: ResourceCardProps) {
         e.preventDefault();
         onOpen(resource.slug);
       }}
-      className="group block h-full rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="group block h-full min-w-0 rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
     >
-      <article className="flex h-full flex-col gap-3 rounded-xl border bg-card p-5 transition-colors group-hover:border-primary/50 group-hover:bg-accent/40">
+      <article className="flex h-full min-w-0 flex-col gap-3 overflow-hidden rounded-xl border bg-card p-5 transition-colors group-hover:border-primary/50 group-hover:bg-accent/40">
         <div className="flex items-start gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <ResourceIcon name={resource.icon} className="size-5" />
@@ -48,6 +48,7 @@ export function ResourceCard({ resource, onOpen }: ResourceCardProps) {
 
         <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
           <Badge variant="secondary">{resource.categoryLabel}</Badge>
+          <Badge variant="outline">{resource.tierLabel}</Badge>
           <Badge variant="outline">{scopeLabels[resource.scope]}</Badge>
           <span className="ml-auto text-xs text-muted-foreground">
             {resource.prerequisiteCount} prerequisites

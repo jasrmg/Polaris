@@ -20,7 +20,7 @@ export function HierarchyMap({ selected, onSelect, counts }: HierarchyMapProps) 
   const active = hierarchy.find((n) => n.scope === selected) ?? null;
 
   return (
-    <section aria-labelledby="hierarchy-heading">
+    <section aria-labelledby="hierarchy-heading" className="min-w-0">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h2 id="hierarchy-heading" className="text-xl font-semibold tracking-tight">

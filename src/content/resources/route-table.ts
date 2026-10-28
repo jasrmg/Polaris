@@ -5,6 +5,9 @@ export const routeTable: ResourceInput = {
   name: "Route Table",
   type: "Microsoft.Network/routeTables",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "Route",
 
@@ -117,6 +120,9 @@ $vnet | Set-AzVirtualNetwork`,
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Azure picks the route with the longest matching prefix. If prefixes are identical, a user-defined route beats BGP, which beats a system route.",
     "Next hop type names in the CLI, PowerShell, ARM and Bicep: VirtualNetworkGateway, VnetLocal (shown as Virtual network in the portal), Internet, VirtualAppliance and None. None drops the traffic.",
     "A next hop IP address is only used with the VirtualAppliance type. Deploy the appliance in a different subnet from the resources that route through it, or traffic can loop inside the subnet.",
@@ -127,8 +133,15 @@ $vnet | Set-AzVirtualNetwork`,
     "Set Virtual network gateway route propagation to Disabled (portal), --disable-bgp-route-propagation true (CLI) or disableBgpRoutePropagation: true (Bicep and ARM) to stop routes from a VPN or ExpressRoute gateway being added to the subnet. Do not disable it on GatewaySubnet.",
     "A route table can only be associated with subnets in the same region and subscription as the route table.",
   ],
+    },
+  ],
 
   related: ["network-virtual-appliance", "vnet-peering", "subnet", "network-watcher"],
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-network/virtual-networks-udr-overview",
+  simulator: {
+    armType: "Microsoft.Network/routeTables",
+    apiVersion: "2023-09-01",
+    nameRule: "route-table",
+  },
 };

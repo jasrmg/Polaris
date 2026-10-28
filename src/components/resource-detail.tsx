@@ -22,6 +22,42 @@ interface ResourceDetailProps {
 const tabsListClass =
   "w-full max-w-full justify-start overflow-x-auto [scrollbar-width:none] sm:w-fit";
 
+function DependencyList({
+  title,
+  empty,
+  items,
+  onOpenResource,
+}: {
+  title: string;
+  empty: string;
+  items: { slug: string; name: string; detail?: string }[];
+  onOpenResource?: (slug: string) => void;
+}) {
+  return (
+    <section aria-labelledby={`dep-${title.toLowerCase().replace(/\s+/g, "-")}`}>
+      <h3 id={`dep-${title.toLowerCase().replace(/\s+/g, "-")}`} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {title}
+      </h3>
+      {items.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">{empty}</p>
+      ) : (
+        <ul className="mt-2 grid gap-2">
+          {items.map((item) => (
+            <li key={item.slug} className="rounded-lg border bg-card p-3">
+              <ResourceLink slug={item.slug} onOpen={onOpenResource}>
+                {item.name}
+              </ResourceLink>
+              {item.detail && (
+                <p className="mt-1 text-sm text-muted-foreground min-w-0 [overflow-wrap:anywhere]">{item.detail}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function ResourceLink({
   slug,
   onOpen,
@@ -67,6 +103,7 @@ export function ResourceDetail({ resource, onOpenResource }: ResourceDetailProps
           </Badge>
         </TabsTrigger>
         <TabsTrigger value="configure" className="flex-none px-3 py-1">Configure</TabsTrigger>
+        <TabsTrigger value="dependencies" className="flex-none px-3 py-1">Dependencies</TabsTrigger>
         {resource.examNotes.length > 0 && (
           <TabsTrigger value="exam" className="flex-none px-3 py-1">Exam notes</TabsTrigger>
         )}
@@ -220,19 +257,43 @@ export function ResourceDetail({ resource, onOpenResource }: ResourceDetailProps
         )}
       </TabsContent>
 
+      <TabsContent value="dependencies" className="grid gap-6">
+        <p className="text-muted-foreground">
+          What this entry needs from the catalog, and which entries need it. Links follow the prerequisites.
+        </p>
+        <DependencyList
+          title="Needs"
+          empty={`Nothing else in the catalog has to exist before a ${resource.name}.`}
+          items={resource.prerequisites
+            .filter((p) => p.slug)
+            .map((p) => ({ slug: p.slug as string, name: resource.linkedNames[p.slug as string] ?? p.name, detail: p.why }))}
+          onOpenResource={onOpenResource}
+        />
+        <DependencyList
+          title="Needed by"
+          empty={`No other catalog entry lists ${resource.name} as a prerequisite.`}
+          items={resource.dependents.map((d) => ({ slug: d.slug, name: d.name }))}
+          onOpenResource={onOpenResource}
+        />
+      </TabsContent>
+
       {resource.examNotes.length > 0 && (
-        <TabsContent value="exam" className="grid gap-3">
-          <p className="text-muted-foreground">
-            Things the AZ-104 exam likes to ask about a {resource.name}.
-          </p>
-          <ul className="grid gap-2">
-            {resource.examNotes.map((note) => (
-              <li key={note} className="flex gap-2 rounded-lg border bg-card p-3">
-                <CircleHelp className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-                <span className="min-w-0 [overflow-wrap:anywhere]">{note}</span>
-              </li>
-            ))}
-          </ul>
+        <TabsContent value="exam" className="grid gap-6">
+          {resource.examNotes.map((group) => (
+            <section key={group.exam} aria-labelledby={`exam-${group.exam}`}>
+              <h3 id={`exam-${group.exam}`} className="text-sm font-medium">
+                {group.exam.toUpperCase()} study notes
+              </h3>
+              <ul className="mt-2 grid gap-2">
+                {group.points.map((note) => (
+                  <li key={note} className="flex gap-2 rounded-lg border bg-card p-3">
+                    <CircleHelp className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{note}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
         </TabsContent>
       )}
     </Tabs>

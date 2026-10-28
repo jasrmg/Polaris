@@ -1,11 +1,13 @@
-import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const resourceGroup: ResourceInput = {
   slug: "resource-group",
   name: "Resource Group",
   type: "Microsoft.Resources/resourceGroups",
-  category: "identity-governance",
+  category: "management-governance",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource-group",
   icon: "FolderOpen",
 
@@ -28,6 +30,7 @@ export const resourceGroup: ResourceInput = {
     {
       name: "An Azure subscription",
       why: "A resource group is created inside a subscription, which is also where the bill lands.",
+      slug: "subscription",
     },
     {
       name: "A name that is unique within the subscription",
@@ -88,26 +91,25 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Deploying a resource group from Bicep or ARM is a subscription-scope deployment. Use az deployment sub create with --location, not az deployment group create.",
     "Tags on a resource group are not inherited by its resources unless you assign an Azure Policy such as Inherit a tag from the resource group.",
     "Moving a resource to another group changes its resource ID and its group, but not its location. A ReadOnly lock on the source or destination group blocks the move.",
     "A resource lock (CanNotDelete or ReadOnly) on a group applies to every resource inside it, and the most restrictive lock in the chain wins.",
     "You cannot rename a resource group after you create it, and you cannot nest resource groups.",
   ],
+    },
+  ],
 
   related: ["virtual-machine", "storage-account", "virtual-network"],
   docsUrl:
     "https://learn.microsoft.com/azure/azure-resource-manager/management/manage-resource-groups-portal",
 
-  simulator: [
-    { key: "name", label: "Resource group name", type: "text", required: true, default: "rg-polaris-demo" },
-    {
-      key: "region",
-      label: "Region",
-      type: "select",
-      required: true,
-      default: "southeastasia",
-      options: regionIds,
-    },
-  ],
+  simulator: {
+    armType: "Microsoft.Resources/resourceGroups",
+    apiVersion: "2024-03-01",
+    nameRule: "resource-group",
+  },
 };

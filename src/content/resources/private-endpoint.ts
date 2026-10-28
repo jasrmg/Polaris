@@ -5,6 +5,9 @@ export const privateEndpoint: ResourceInput = {
   name: "Private Endpoint",
   type: "Microsoft.Network/privateEndpoints",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "Cable",
 
@@ -184,6 +187,9 @@ resource dnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "A private endpoint is a NIC with a private IP from your subnet, connected to one sub-resource of one service (for example blob, not the whole storage account).",
     "DNS is the usual failure. The privatelink zone, such as privatelink.blob.core.windows.net, must be linked to the VNet or the name still resolves to the public IP.",
     "Private endpoints work from on-premises over VPN or ExpressRoute. Service endpoints do not.",
@@ -194,7 +200,14 @@ resource dnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-
     "NSGs and user-defined routes apply to private endpoints only when network policies are enabled on the subnet. The setting covers every private endpoint in the subnet.",
     "On the CLI, dns-zone-group create takes the zone in --private-dns-zone and a label for the zone config in --zone-name.",
   ],
+    },
+  ],
 
   related: ["subnet", "private-dns-zone", "service-endpoint", "storage-account"],
   docsUrl: "https://learn.microsoft.com/azure/private-link/private-endpoint-overview",
+  simulator: {
+    armType: "Microsoft.Network/privateEndpoints",
+    apiVersion: "2023-09-01",
+    nameRule: "private-endpoint",
+  },
 };

@@ -5,6 +5,9 @@ export const virtualNetwork: ResourceInput = {
   name: "Virtual Network",
   type: "Microsoft.Network/virtualNetworks",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "Network",
 
@@ -122,12 +125,17 @@ resource subnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "A VNet belongs to one region and one subscription. It can span all availability zones in that region.",
     "Address spaces of VNets that you peer or join with a VPN must not overlap.",
     "Azure reserves 5 IP addresses in every subnet: the first four and the last one.",
     "By default, resources in different subnets of the same VNet can talk to each other. Use network security groups to filter that traffic.",
     "You can add address ranges to a VNet later. If the VNet is peered, sync the peering after every resize. The new range must not overlap a peered or on-premises network. Resizing is not supported when the peer is a classic VNet.",
     "In Bicep, Learn recommends defining subnets as child resources instead of inside the VNet resource. The ARM example lists them inline, which is what an exported template looks like.",
+  ],
+    },
   ],
 
   related: [
@@ -139,4 +147,11 @@ resource subnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' = {
     "azure-bastion",
   ],
   docsUrl: "https://learn.microsoft.com/azure/virtual-network/quick-create-portal",
+  simulator: {
+    armType: "Microsoft.Network/virtualNetworks",
+    apiVersion: "2023-09-01",
+    nameRule: "virtual-network",
+    provisioning: ["Failed", "Succeeded", "Canceled", "Creating", "Updating", "Deleting"],
+    provisioningSource: "https://learn.microsoft.com/en-us/rest/api/virtualnetwork/virtual-networks/get",
+  },
 };

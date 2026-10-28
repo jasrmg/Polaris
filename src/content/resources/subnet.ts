@@ -5,6 +5,9 @@ export const subnet: ResourceInput = {
   name: "Subnet",
   type: "Microsoft.Network/virtualNetworks/subnets",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "LayoutGrid",
 
@@ -75,11 +78,16 @@ resource subnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Azure reserves 5 addresses per subnet, so a /29 leaves only 3 usable addresses.",
     "Special subnets need exact names: GatewaySubnet (/27 or larger, /29 only for the Basic VPN gateway SKU), AzureBastionSubnet (/26 or larger, not needed for the Bastion Developer SKU) and AzureFirewallSubnet (/26 or larger).",
     "A route table is associated with subnets only. An NSG can be associated with a subnet, a NIC, or both. The NSG or route table must be in the same subscription and region as the VNet.",
     "You cannot delete a subnet while resources, such as NICs, are still attached to it.",
     "Redeploying a VNet reapplies all of its properties. If a template lists subnets inline, list every subnet you want to keep. Setting the subnets property to an empty value deletes all subnets. If you leave the property out, existing subnets are left alone.",
+  ],
+    },
   ],
 
   related: [
@@ -90,4 +98,9 @@ resource subnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' = {
     "private-endpoint",
   ],
   docsUrl: "https://learn.microsoft.com/azure/virtual-network/virtual-network-manage-subnet",
+  simulator: {
+    armType: "Microsoft.Network/virtualNetworks/subnets",
+    apiVersion: "2023-09-01",
+    nameRule: "subnet",
+  },
 };

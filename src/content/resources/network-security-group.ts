@@ -5,6 +5,9 @@ export const networkSecurityGroup: ResourceInput = {
   name: "Network Security Group",
   type: "Microsoft.Network/networkSecurityGroups",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "ShieldCheck",
 
@@ -144,6 +147,9 @@ New-AzNetworkSecurityGroup \`
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Rule priorities run from 100 to 4096. The lowest number is evaluated first and the first match wins.",
     "Default rules have priorities 65000, 65001 and 65500 and cannot be deleted. The 65500 rule denies all traffic. Override them with a lower-numbered rule.",
     "With NSGs on both a subnet and a NIC, inbound traffic is checked by the subnet NSG first, then the NIC NSG. Outbound is the reverse. Both must allow it.",
@@ -151,8 +157,15 @@ New-AzNetworkSecurityGroup \`
     "Use Effective security rules on a NIC (or IP flow verify in Network Watcher) to see which rule is actually blocking traffic.",
     "Rules can use service tags (Internet, VirtualNetwork, AzureLoadBalancer, Storage) and application security groups instead of raw IP ranges.",
   ],
+    },
+  ],
 
   related: ["subnet", "application-security-group", "public-ip-address", "network-watcher"],
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-network/network-security-groups-overview",
+  simulator: {
+    armType: "Microsoft.Network/networkSecurityGroups",
+    apiVersion: "2023-09-01",
+    nameRule: "network-security-group",
+  },
 };

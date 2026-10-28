@@ -5,6 +5,9 @@ export const loadBalancer: ResourceInput = {
   name: "Load Balancer",
   type: "Microsoft.Network/loadBalancers",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "Split",
 
@@ -219,6 +222,9 @@ resource lb 'Microsoft.Network/loadBalancers@2023-09-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Load Balancer works at layer 4 (TCP and UDP). It cannot route by URL path, offload TLS or act as a WAF. Application Gateway does layer 7.",
     "Basic Load Balancer was retired on 30 September 2025. The current SKUs are Standard and Gateway (Gateway is for chaining network virtual appliances). The tier is Regional, or Global for cross-region load balancing.",
     "A Standard load balancer needs a Standard public IP, and is closed to inbound traffic until an NSG allows it. Traffic is blocked if no NSG exists on the subnet or NIC.",
@@ -231,7 +237,14 @@ resource lb 'Microsoft.Network/loadBalancers@2023-09-01' = {
     "HA ports is a rule with protocol All and port 0. It is available only on an internal Standard load balancer, and is how you balance NVAs.",
     "For outbound internet access Learn ranks NAT Gateway best, then an instance-level public IP, then load balancer outbound rules. Outbound rules need a Standard public load balancer. Default outbound access is not recommended.",
   ],
+    },
+  ],
 
   related: ["public-ip-address", "virtual-machine", "network-security-group", "network-virtual-appliance", "virtual-machine-scale-set"],
   docsUrl: "https://learn.microsoft.com/azure/load-balancer/load-balancer-overview",
+  simulator: {
+    armType: "Microsoft.Network/loadBalancers",
+    apiVersion: "2023-09-01",
+    nameRule: "load-balancer",
+  },
 };

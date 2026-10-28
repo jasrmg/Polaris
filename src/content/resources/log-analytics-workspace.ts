@@ -1,11 +1,13 @@
-import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const logAnalyticsWorkspace: ResourceInput = {
   slug: "log-analytics-workspace",
   name: "Log Analytics Workspace",
   type: "Microsoft.OperationalInsights/workspaces",
-  category: "monitor-backup",
+  category: "monitoring",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "ScrollText",
 
@@ -102,6 +104,9 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Retention defaults. By default every table keeps data for 30 days, except that Usage and AzureActivity keep data for at least 90 days at no charge, and so do the Application Insights tables. Analytics retention can be extended up to two years (730 days) by changing the workspace default or a single table. Total retention (long-term retention included) can reach 12 years (4,383 days). The CLI --total-retention-time parameter supports up to 2,556 days (seven years).",
     "Basic and Auxiliary tables have only a total retention period, which is 30 days by default. Retention is set per table under Tables, then Manage table. After analytics retention ends, you retrieve older data with a search job. If you shorten a table's total retention, Azure Monitor Logs waits 30 days before it removes the data, so you can undo a mistake.",
     "Table plans are set per table, so one workspace can mix all three. Analytics is for continuous monitoring and has full features. Basic costs less to ingest and bills for queries by data scanned. Auxiliary is the lowest cost, for verbose and audit data, and is not subject to the daily cap. Basic and Auxiliary plans are not available to workspaces in legacy pricing tiers.",
@@ -118,6 +123,8 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
     "Creating a workspace with the same name, resource group, subscription and region as one deleted in the last 14 days recovers the deleted workspace and its data. If you want a brand new workspace with a soft-deleted name, you get an error until you recover the old one and permanently delete it.",
     "In the CLI the command is az monitor log-analytics workspace create, and the retention parameter is --retention-time. In Azure PowerShell the cmdlets use the old name Operational Insights, for example New-AzOperationalInsightsWorkspace with -RetentionInDays.",
   ],
+    },
+  ],
 
   related: [
     "resource-group",
@@ -133,10 +140,9 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   docsUrl:
     "https://learn.microsoft.com/azure/azure-monitor/logs/log-analytics-workspace-overview",
 
-  simulator: [
-    { key: "name", label: "Workspace name", type: "text", required: true, default: "law-polaris", help: "Must be unique per resource group." },
-    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: regionIds, help: "A workspace lives in one region." },
-    { key: "retentionDays", label: "Data retention (days)", type: "number", required: false, default: 30, help: "Not on the create form. After creation, set it under Usage and estimated costs, then Data Retention. The default is 30 days." },
-    { key: "dailyCapGb", label: "Daily cap (GB/day)", type: "number", required: false, help: "Not on the create form. After creation, set it under Usage and estimated costs, then Daily Cap. Leave empty for no cap." },
-  ],
+  simulator: {
+    armType: "Microsoft.OperationalInsights/workspaces",
+    apiVersion: "2023-09-01",
+    nameRule: "log-analytics-workspace",
+  },
 };

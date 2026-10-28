@@ -5,6 +5,9 @@ export const privateDnsZone: ResourceInput = {
   name: "Private DNS Zone",
   type: "Microsoft.Network/privateDnsZones",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "Lock",
 
@@ -95,6 +98,9 @@ resource link 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01'
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "A private zone resolves only for VNets linked to it (or through a DNS Private Resolver). Peering is not required for resolution, and a VNet needs its own link to the zone.",
     "A link with auto-registration (registrationEnabled true) makes the VNet a registration VNet. A VNet can have only one registration zone but can link to many zones for resolution only (limit 1,000 zones per VNet).",
     "A zone can have many links: up to 1,000 VNet links, of which up to 100 can have auto-registration.",
@@ -103,7 +109,14 @@ resource link 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01'
     "With default VNet DNS settings, linked private zones are queried first, then Azure-provided DNS (168.63.129.16). A custom DNS server skips the zone unless it forwards to 168.63.129.16 or uses a Private Resolver.",
     "A private zone name needs at least two labels (contoso.internal works) and cannot hold NS delegations.",
   ],
+    },
+  ],
 
   related: ["azure-dns-zone", "virtual-network", "vnet-peering", "private-endpoint"],
   docsUrl: "https://learn.microsoft.com/azure/dns/private-dns-privatednszone",
+  simulator: {
+    armType: "Microsoft.Network/privateDnsZones",
+    apiVersion: "2020-06-01",
+    nameRule: "private-dns-zone",
+  },
 };

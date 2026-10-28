@@ -1,3 +1,4 @@
+import { nameRules } from "./name-rules";
 import { actionGroup } from "./resources/action-group";
 import { alertRule } from "./resources/alert-rule";
 import { blobContainer } from "./resources/blob-container";
@@ -14,6 +15,7 @@ import { applicationSecurityGroup } from "./resources/application-security-group
 import { azureBastion } from "./resources/azure-bastion";
 import { azureDnsZone } from "./resources/azure-dns-zone";
 import { loadBalancer } from "./resources/load-balancer";
+import { managementGroup } from "./resources/management-group";
 import { networkSecurityGroup } from "./resources/network-security-group";
 import { networkVirtualAppliance } from "./resources/network-virtual-appliance";
 import { privateDnsZone } from "./resources/private-dns-zone";
@@ -23,7 +25,9 @@ import { resourceGroup } from "./resources/resource-group";
 import { routeTable } from "./resources/route-table";
 import { serviceEndpoint } from "./resources/service-endpoint";
 import { storageAccount } from "./resources/storage-account";
+import { subscription } from "./resources/subscription";
 import { subnet } from "./resources/subnet";
+import { tenant } from "./resources/tenant";
 import { virtualMachine } from "./resources/virtual-machine";
 import { virtualNetwork } from "./resources/virtual-network";
 import { vnetPeering } from "./resources/vnet-peering";
@@ -35,6 +39,9 @@ import {
 } from "./schema";
 
 const rawResources: ResourceInput[] = [
+  tenant,
+  managementGroup,
+  subscription,
   resourceGroup,
   virtualMachine,
   virtualMachineScaleSet,
@@ -101,6 +108,19 @@ function loadResources(input: ResourceInput[]): Resource[] {
     for (const ref of refs) {
       if (!slugs.has(ref)) {
         throw new Error(`Resource "${r.slug}" references unknown slug "${ref}"`);
+      }
+    }
+    const rule = r.simulator?.nameRule;
+    if (rule && !nameRules[rule]) {
+      throw new Error(`Resource "${r.slug}" uses unknown name rule "${rule}"`);
+    }
+    if (r.simulator) {
+      const samples = [r.example.bicep, r.example.arm].filter(Boolean).join("\n");
+      const needle = `${r.simulator.armType}@${r.simulator.apiVersion}`;
+      if (samples && !samples.includes(needle)) {
+        throw new Error(
+          `Resource "${r.slug}" simulator apiVersion ${r.simulator.apiVersion} is not in its Bicep or ARM example (${needle})`,
+        );
       }
     }
   }

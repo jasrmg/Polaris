@@ -33,7 +33,16 @@ export function ResourceHeading({
         </Description>
         <div className="mt-3 flex flex-wrap gap-2">
           <Badge variant="secondary">{resource.categoryLabel}</Badge>
+          <Badge variant="outline">{resource.tierLabel}</Badge>
           <Badge variant="outline">{scopeLabels[resource.scope]}</Badge>
+          {resource.kind !== "azure-resource" && (
+            <Badge variant="outline">{resource.kindLabel}</Badge>
+          )}
+          {resource.examLabels.map((label) => (
+            <Badge key={label} variant="outline">
+              {label}
+            </Badge>
+          ))}
         </div>
       </div>
     </div>

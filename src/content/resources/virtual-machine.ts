@@ -1,4 +1,3 @@
-import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const virtualMachine: ResourceInput = {
@@ -6,6 +5,9 @@ export const virtualMachine: ResourceInput = {
   name: "Virtual Machine",
   type: "Microsoft.Compute/virtualMachines",
   category: "compute",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "Server",
 
@@ -154,10 +156,15 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Shutting down from inside the OS, or running az vm stop, leaves the VM Stopped (allocated) and compute is still billed. Use az vm deallocate, or Stop in the portal, to reach Stopped (deallocated) and stop the compute charge. Disks and public IPs are still billed.",
     "You set the availability zone or availability set when you create the VM. A zonal VM cannot be moved to another zone, and an availability set can only be set at creation. You must redeploy the VM to change either.",
     "Resizing a running VM always restarts it. If the new size is not available on the current hardware cluster, you must deallocate the VM first.",
     "To get ARM from an existing VM, use Export template on the resource group, then az bicep decompile to convert it to Bicep.",
+  ],
+    },
   ],
 
   related: [
@@ -174,10 +181,11 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-03-01' = {
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-machines/linux/quick-create-portal",
 
-  simulator: [
-    { key: "name", label: "Virtual machine name", type: "text", required: true, default: "vm-web-01" },
-    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: regionIds },
-    { key: "image", label: "Image", type: "select", required: true, default: "Ubuntu 22.04 LTS", options: ["Ubuntu 22.04 LTS", "Windows Server 2022"] },
-    { key: "size", label: "Size", type: "select", required: true, default: "Standard_D2s_v5", options: ["Standard_D2s_v5", "Standard_D4s_v5"] },
-  ],
+  simulator: {
+    armType: "Microsoft.Compute/virtualMachines",
+    apiVersion: "2024-03-01",
+    nameRule: "virtual-machine",
+    provisioning: ["Creating", "Updating", "Failed", "Succeeded", "Deleting"],
+    provisioningSource: "https://learn.microsoft.com/en-us/azure/virtual-machines/states-billing",
+  },
 };

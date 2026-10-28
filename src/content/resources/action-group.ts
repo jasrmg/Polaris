@@ -4,7 +4,10 @@ export const actionGroup: ResourceInput = {
   slug: "action-group",
   name: "Action Group",
   type: "Microsoft.Insights/actionGroups",
-  category: "monitor-backup",
+  category: "monitoring",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "Send",
 
@@ -105,6 +108,9 @@ resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = {
 output actionGroupId string = actionGroup.id`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "An action group is separate from the alert rule. Many alert rules can use the same action group, and one alert rule can use up to five action groups. They run at the same time, in no set order. To email the same people for two alert rules, create one action group and attach it to both.",
     "Notification types are Email Azure Resource Manager role, Email, SMS, Azure app push notifications and Voice. Action types are Automation Runbook, Event Hubs, Functions, ITSM, Logic Apps, Secure webhook and Webhook. Notifications tell a person. Actions run automation or call another system.",
     "In a template the resource type is Microsoft.Insights/actionGroups, and groupShortName is required with a maximum length of 12. It is used in SMS messages. The Learn ARM template sets location to Global. The Azure CLI default location is also Global.",
@@ -118,25 +124,15 @@ output actionGroupId string = actionGroup.id`,
     "Retirement notes. ITSM actions that send alerts and events to ServiceNow are in a 3-year deprecation that started in September 2022. Learn recommends the secure webhook action for ServiceNow ITOM and BMC Helix. Azure Automation Run as accounts were retired on 30 September 2023, so runbook actions should use a managed identity.",
     "If an action group is not enabled, none of its receivers get any communications. In PowerShell, New-AzActionGroup needs the -Enabled switch to enable it.",
   ],
+    },
+  ],
 
   related: ["alert-rule", "log-analytics-workspace", "resource-group", "virtual-machine", "app-service"],
   docsUrl: "https://learn.microsoft.com/azure/azure-monitor/alerts/action-groups",
 
-  simulator: [
-    { key: "name", label: "Action group name", type: "text", required: true, default: "ag-polaris-ops" },
-    { key: "displayName", label: "Display name", type: "text", required: true, default: "agpolaris", help: "Used in place of the full action group name when notifications are sent. The groupShortName template property is limited to 12 characters, so keep it short." },
-    {
-      key: "region",
-      label: "Region",
-      type: "select",
-      required: true,
-      default: "Global",
-      options: ["Global", "East US", "East US 2", "West US", "West US 2", "South Central US", "North Central US", "Sweden Central", "Germany West Central", "India Central", "India South"],
-      help: "Global lets the service decide where the action group is stored. Regional keeps storage and processing in the region you choose. Service Health alerts need Global.",
-    },
-    { key: "notificationType", label: "Notification type", type: "select", required: true, default: "Email", options: ["Email", "Email Azure Resource Manager role", "SMS", "Azure app push notifications", "Voice"] },
-    { key: "notificationName", label: "Notification name", type: "text", required: true, default: "ops-email", help: "Must be unique within the action group." },
-    { key: "emailAddress", label: "Email address", type: "text", required: false, default: "ops@contoso.com", help: "Used for the Email notification type. A new address must be verified with a one-time passcode within 30 minutes." },
-    { key: "commonAlertSchema", label: "Enable the common alert schema", type: "boolean", required: false },
-  ],
+  simulator: {
+    armType: "Microsoft.Insights/actionGroups",
+    apiVersion: "2023-01-01",
+    nameRule: "action-group",
+  },
 };

@@ -245,7 +245,7 @@ Why four and not three: the Entra tenant and users are not ARM resources, and mi
 
 `exams: Array<"az-104" | "az-400">` and `examNotes` becomes `{ exam, points[] }[]`. The migration attaches today's `examNotes` text to `az-104`. The home page filters by exam; the exam tag is never the boundary of scope. The source of truth for each exam is its official skills list, re-fetched before planning that exam.
 
-### 9.3 Service-area `category` **[Decision, proposed, owner to confirm]**
+### 9.3 Service-area `category` **[Owner, 2026-10-28]**
 
 Today's five ids are AZ-104 domains. Replace them with service areas so AZ-400 and later providers fit:
 
@@ -257,15 +257,17 @@ Today's five ids are AZ-104 domains. Replace them with service areas so AZ-400 a
 | `containers` | Containers | Container Instances, Container Apps (moved out of `compute`) |
 | `storage` | Storage | `storage` |
 | `networking` | Networking | `networking` |
-| `monitoring` | Monitoring | Log Analytics, alert rule, action group, Network Watcher |
+| `monitoring` | Monitoring | Log Analytics, alert rule, action group |
 | `backup-recovery` | Backup and recovery | Recovery Services vault |
 | `security` | Security | (new: Key Vault, Defender, later) |
 | `databases` | Databases | (new, later) |
 | `devops` | DevOps | (new, AZ-400) |
 
-Category is a navigation aid, not an Azure fact. Network Watcher moving from "monitor-backup" to `monitoring` is a judgement call: it is a network diagnostics tool, so it may fit `networking` better. Pick at checkpoint 11.
+Category is a navigation aid, not an Azure fact. **[Owner, 2026-10-28]** Network Watcher is `networking`.
 
-### 9.4 `tier` and the shape of `simulator` **[Decision, proposed]**
+Checkpoint 11 stores the slim block only: `armType`, `apiVersion`, optional `nameRule`, and `provisioning` when a Learn page enumerates the values. The `form` steps below are checkpoint 15. Confirmed by the owner on 2026-10-28.
+
+### 9.4 `tier` and the shape of `simulator` **[Owner, 2026-10-28]**
 
 `tier: 1 | 2 | 3` (section 7), required on every entry. The old ad hoc `simulator` array (`key, label, type, required, default, options, help`) is replaced by one object, required for tiers 1 and 2:
 

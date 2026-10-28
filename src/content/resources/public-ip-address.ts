@@ -5,6 +5,9 @@ export const publicIpAddress: ResourceInput = {
   name: "Public IP Address",
   type: "Microsoft.Network/publicIPAddresses",
   category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "Globe",
 
@@ -88,13 +91,23 @@ export const publicIpAddress: ResourceInput = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "A Standard public IP is secure by default: inbound traffic is dropped until an NSG rule allows it.",
     "Standard public IPs are always static. Basic SKU public IPs were retired on 30 September 2025, but Learn still describes Basic in comparison tables, so you may see it in older material.",
     "The DNS name label becomes label.region.cloudapp.azure.com. It must be unique within that Azure region across all subscriptions and all customers.",
     "By default, deleting a VM leaves its public IP in place. Set the delete option when you create the VM (Delete public IP and NIC when VM is deleted), or remove the public IP yourself, because it keeps costing money.",
   ],
+    },
+  ],
 
   related: ["network-security-group", "virtual-machine", "load-balancer", "azure-bastion"],
   docsUrl:
     "https://learn.microsoft.com/azure/virtual-network/ip-services/public-ip-addresses",
+  simulator: {
+    armType: "Microsoft.Network/publicIPAddresses",
+    apiVersion: "2023-09-01",
+    nameRule: "public-ip-address",
+  },
 };

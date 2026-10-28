@@ -1,11 +1,13 @@
-import { regionIds } from "../regions";
 import type { ResourceInput } from "../schema";
 
 export const networkWatcher: ResourceInput = {
   slug: "network-watcher",
   name: "Network Watcher",
   type: "Microsoft.Network/networkWatchers",
-  category: "monitor-backup",
+  category: "networking",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 1,
   scope: "resource",
   icon: "Radar",
 
@@ -138,6 +140,9 @@ resource networkWatcher 'Microsoft.Network/networkWatchers@2024-05-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Which tool answers which question. IP flow verify: is this packet allowed or denied, and by which security rule. Next hop: which route is used (type, IP address, route table ID). Connection troubleshoot: can A reach B right now. Connection monitor: can A reach B, and how is it doing over time. Packet capture: what packets cross a VM. Flow logs: which IP traffic crossed a network security group or virtual network. Topology: how resources relate to each other. VPN troubleshoot: is a VPN gateway or connection healthy.",
     "IP flow verify returns Access (Allow or Deny) and the rule name, for example defaultSecurityRules/DenyAllInBound. It checks the default and configured security rules only. If the result is as expected and traffic still fails, look for a firewall between the VM and the endpoint, or a firewall in the VM's operating system.",
     "Next hop: the route table ID shows System Route when no user-defined route applies. A next hop type of None means the traffic is dropped. A user-defined route to a virtual appliance changes the result, which is how Learn shows a routing problem. Compare with Effective routes on the NIC.",
@@ -157,6 +162,8 @@ resource networkWatcher 'Microsoft.Network/networkWatchers@2024-05-01' = {
     "Permissions: Owner, Contributor or Network contributor, or a custom role with the actions for the tool. Network contributor lacks the Microsoft.Storage and Microsoft.Compute actions some tools need, and the Log Analytics actions that traffic analytics needs.",
     "Commands to know: az network watcher configure, list, show-next-hop, test-ip-flow, test-connectivity and show-topology. In PowerShell: New-AzNetworkWatcher, Get-AzNetworkWatcher, Get-AzNetworkWatcherNextHop and Test-AzNetworkWatcherIPFlow.",
   ],
+    },
+  ],
 
   related: [
     "virtual-network",
@@ -172,9 +179,9 @@ resource networkWatcher 'Microsoft.Network/networkWatchers@2024-05-01' = {
   ],
   docsUrl: "https://learn.microsoft.com/azure/network-watcher/network-watcher-overview",
 
-  simulator: [
-    { key: "region", label: "Region", type: "select", required: true, default: "southeastasia", options: regionIds, help: "One Network Watcher instance per region per subscription. It is created automatically when you create or update a virtual network in the region." },
-    { key: "name", label: "Name", type: "text", required: true, default: "NetworkWatcher_southeastasia", help: "The portal names it NetworkWatcher_ followed by the region. The CLI uses the region followed by -watcher. PowerShell and the REST API let you choose." },
-    { key: "resourceGroup", label: "Resource group", type: "text", required: true, default: "NetworkWatcherRG", help: "The portal creates NetworkWatcherRG if it does not exist. With PowerShell or the CLI the group must exist first." },
-  ],
+  simulator: {
+    armType: "Microsoft.Network/networkWatchers",
+    apiVersion: "2024-05-01",
+    nameRule: "network-watcher",
+  },
 };

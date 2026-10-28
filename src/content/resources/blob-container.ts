@@ -5,6 +5,9 @@ export const blobContainer: ResourceInput = {
   name: "Blob Container",
   type: "Microsoft.Storage/storageAccounts/blobServices/containers",
   category: "storage",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "Archive",
 
@@ -129,6 +132,9 @@ resource container 'Microsoft.Storage/storageAccounts/blobServices/containers@20
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Hierarchy: storage account, then container, then blob. An account can hold an unlimited number of containers and a container an unlimited number of blobs. A container holds blobs (and directories if the account has a hierarchical namespace), not other containers. Without a hierarchical namespace the Blob service is flat, and a delimiter such as / in a blob name only creates a virtual hierarchy.",
     "Container names: 3 to 63 characters, lowercase letters, numbers and hyphens, every hyphen between letters or numbers (no consecutive hyphens), no spaces. A name that breaks the rules fails with status 400. Two accounts can have a container with the same name, but a name must be unique within one account. Blob names are case-sensitive, up to 1,024 characters.",
     "Anonymous access levels: Private (default, no anonymous access), Blob (anonymous clients can read the blobs but cannot list them) and Container (anonymous clients can read blobs and list them). In PowerShell the values are Off, Blob and Container, and in the CLI off, blob and container. You set the level per container only, never per blob.",
@@ -147,13 +153,15 @@ resource container 'Microsoft.Storage/storageAccounts/blobServices/containers@20
     "Related features on the account: change feed records every blob change as logs in a $blobchangefeed container. Object replication copies block blobs asynchronously to another account and needs change feed on the source and versioning on both accounts. Static website hosting creates the $web container. Lifecycle rules do not touch $web or $logs.",
     "Via Azure Resource Manager you can create containers with Bicep or ARM (the type is Microsoft.Storage/storageAccounts/blobServices/containers, parented to the blob service named default), az storage container-rm create or New-AzRmStorageContainer. The publicAccess property accepts None, Blob or Container.",
   ],
+    },
+  ],
 
   related: ["storage-account", "file-share", "private-endpoint", "service-endpoint", "virtual-machine", "app-service", "recovery-services-vault"],
   docsUrl: "https://learn.microsoft.com/azure/storage/blobs/storage-blobs-introduction",
 
-  simulator: [
-    { key: "name", label: "Container name", type: "text", required: true, default: "images", help: "3-63 characters, lowercase letters, numbers and hyphens only. No consecutive hyphens." },
-    { key: "storageAccount", label: "Storage account", type: "text", required: true, default: "stpolarisdemo001", help: "The account that will hold the container." },
-    { key: "publicAccess", label: "Anonymous access level", type: "select", required: true, default: "Private (no anonymous access)", options: ["Private (no anonymous access)", "Blob", "Container"], help: "Blob and Container only work if the storage account allows anonymous access." },
-  ],
+  simulator: {
+    armType: "Microsoft.Storage/storageAccounts/blobServices/containers",
+    apiVersion: "2023-05-01",
+    nameRule: "blob-container",
+  },
 };

@@ -7,7 +7,17 @@ import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { categoryLabels, type Category, type Scope } from "@/content/schema";
+import {
+  categoryLabels,
+  examLabels,
+  kindLabels,
+  tierLabels,
+  type Category,
+  type Exam,
+  type Kind,
+  type Scope,
+  type Tier,
+} from "@/content/schema";
 import type { ResourceSummary } from "@/content/summary";
 import { resourcePath, slugFromPathname } from "@/lib/resource-path";
 import { cn } from "@/lib/utils";
@@ -27,6 +37,9 @@ export function Explorer({ resources }: { resources: ResourceSummary[] }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<Category | null>(null);
   const [scope, setScope] = useState<Scope | null>(null);
+  const [kind, setKind] = useState<Kind | null>(null);
+  const [exam, setExam] = useState<Exam | null>(null);
+  const [tier, setTier] = useState<Tier | null>(null);
 
   // The URL is the source of truth for the modal. Opening pushes
   // /resources/<slug>/ with the native History API (Next syncs usePathname),
@@ -59,6 +72,7 @@ export function Explorer({ resources }: { resources: ResourceSummary[] }) {
           { name: "tagline", weight: 2 },
           { name: "type", weight: 1.5 },
           { name: "categoryLabel", weight: 1 },
+          { name: "kindLabel", weight: 1 },
           { name: "definition", weight: 0.5 },
         ],
         threshold: 0.3,
@@ -77,8 +91,14 @@ export function Explorer({ resources }: { resources: ResourceSummary[] }) {
   // that narrowed list, so a chip never promises results a click can't deliver.
   const narrowed = useMemo(() => {
     const base = query.trim() ? fuse.search(query.trim()).map((m) => m.item) : resources;
-    return scope ? base.filter((r) => r.scope === scope) : base;
-  }, [fuse, query, resources, scope]);
+    return base.filter((r) => {
+      if (scope && r.scope !== scope) return false;
+      if (kind && r.kind !== kind) return false;
+      if (exam && !r.exams.includes(exam)) return false;
+      if (tier && r.tier !== tier) return false;
+      return true;
+    });
+  }, [fuse, query, resources, scope, kind, exam, tier]);
 
   const categoryCounts = useMemo(() => {
     const counts = new Map<Category, number>();
@@ -97,20 +117,42 @@ export function Explorer({ resources }: { resources: ResourceSummary[] }) {
     [narrowed, category],
   );
 
-  const hasFilters = query.trim() !== "" || category !== null || scope !== null;
+  const presentKinds = useMemo(
+    () => (Object.keys(kindLabels) as Kind[]).filter((k) => resources.some((r) => r.kind === k)),
+    [resources],
+  );
+  const presentExams = useMemo(
+    () => (Object.keys(examLabels) as Exam[]).filter((e) => resources.some((r) => r.exams.includes(e))),
+    [resources],
+  );
+  const presentTiers = useMemo(
+    () => ([1, 2, 3] as Tier[]).filter((t) => resources.some((r) => r.tier === t)),
+    [resources],
+  );
+
+  const hasFilters =
+    query.trim() !== "" ||
+    category !== null ||
+    scope !== null ||
+    kind !== null ||
+    exam !== null ||
+    tier !== null;
 
   function clearAll() {
     setQuery("");
     setCategory(null);
     setScope(null);
+    setKind(null);
+    setExam(null);
+    setTier(null);
   }
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="grid gap-12">
+      <div className="grid min-w-0 gap-12">
         <HierarchyMap selected={scope} onSelect={setScope} counts={scopeCounts} />
 
-        <section aria-labelledby="catalog-heading">
+        <section aria-labelledby="catalog-heading" className="min-w-0">
           <h2 id="catalog-heading" className="text-xl font-semibold tracking-tight">
             Resource catalog
           </h2>
@@ -159,10 +201,28 @@ export function Explorer({ resources }: { resources: ResourceSummary[] }) {
             })}
           </div>
 
+          <div role="group" aria-label="Filter by kind, exam and fidelity" className="mt-2 flex flex-wrap gap-2">
+            {presentKinds.map((k) => (
+              <FilterChip key={k} active={kind === k} onClick={() => setKind(kind === k ? null : k)}>
+                {kindLabels[k]}
+              </FilterChip>
+            ))}
+            {presentExams.map((e) => (
+              <FilterChip key={e} active={exam === e} onClick={() => setExam(exam === e ? null : e)}>
+                {examLabels[e]}
+              </FilterChip>
+            ))}
+            {presentTiers.map((t) => (
+              <FilterChip key={t} active={tier === t} onClick={() => setTier(tier === t ? null : t)}>
+                {tierLabels[t]}
+              </FilterChip>
+            ))}
+          </div>
+
           {visible.length > 0 ? (
-            <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="mt-6 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {visible.map((r) => (
-                <li key={r.slug}>
+                <li key={r.slug} className="min-w-0">
                   <ResourceCard resource={r} onOpen={openResource} />
                 </li>
               ))}

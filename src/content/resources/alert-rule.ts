@@ -4,7 +4,10 @@ export const alertRule: ResourceInput = {
   slug: "alert-rule",
   name: "Azure Monitor Alert Rule",
   type: "Microsoft.Insights/metricAlerts",
-  category: "monitor-backup",
+  category: "monitoring",
+  kind: "azure-resource",
+  exams: ["az-104"],
+  tier: 2,
   scope: "resource",
   icon: "BellRing",
 
@@ -146,6 +149,9 @@ resource cpuAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
 }`,
   },
   examNotes: [
+    {
+      exam: "az-104",
+      points: [
     "Pick the alert type from the signal. Metric alert: data already in metrics that needs little manipulation. Log search alert: advanced logic with a KQL query on logs. Activity log alert: a specific event such as a restart, a shutdown, or a resource being created or deleted. Service Health and Resource Health alerts are types of activity log alert. Prometheus alerts use PromQL on Azure Monitor managed service for Prometheus. Smart detection alerts come from Application Insights.",
     "Resource types differ by alert type. Metric alerts are Microsoft.Insights/metricAlerts. Learn lists log search alerts under microsoft.insights/scheduledqueryrules and activity log alerts under microsoft.insights/activityLogAlerts. Alert processing rules are Microsoft.AlertsManagement/actionRules, because they used to be called action rules.",
     "Severity runs from 0 (critical) to 4 (verbose). In az monitor metrics alert create the default is 2.",
@@ -161,6 +167,8 @@ resource cpuAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
     "Alerts are stored for 30 days and are then deleted. A fired alert instance is read-only. Changes to the rule apply only to future alerts.",
     "Classic metric alerts are retired for public cloud users. To create a metric alert rule in PowerShell, use Add-AzMetricAlertRuleV2 together with New-AzMetricAlertRuleV2Criteria. In the CLI, use az monitor metrics alert create.",
   ],
+    },
+  ],
 
   related: [
     "action-group",
@@ -173,18 +181,9 @@ resource cpuAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   ],
   docsUrl: "https://learn.microsoft.com/azure/azure-monitor/alerts/alerts-create-metric-alert-rule",
 
-  simulator: [
-    { key: "name", label: "Alert rule name", type: "text", required: true, default: "alert-vm-high-cpu", help: "Cannot be changed after creation. Must be unique in the resource group." },
-    { key: "scope", label: "Target resource", type: "text", required: true, default: "vm-web-01", help: "The resource to monitor. A rule can cover several resources of the same type in the same region." },
-    { key: "signal", label: "Signal name", type: "select", required: true, default: "Percentage CPU", options: ["Percentage CPU"] },
-    { key: "thresholdType", label: "Threshold", type: "select", required: true, default: "Static", options: ["Static", "Dynamic"] },
-    { key: "aggregation", label: "Aggregation type", type: "select", required: true, default: "Average", options: ["Sum", "Count", "Average", "Min", "Max"] },
-    { key: "operator", label: "Operator", type: "select", required: true, default: "Greater than", options: ["Greater than", "Less than"] },
-    { key: "threshold", label: "Threshold value", type: "number", required: false, default: 80, help: "Used when the threshold is Static." },
-    { key: "checkEvery", label: "Check every", type: "text", required: true, default: "1 minute", help: "How often the rule checks the condition. Keep it less than or equal to the lookback period." },
-    { key: "lookback", label: "Lookback period", type: "text", required: true, default: "5 minutes", help: "How far back to look each time the data is checked." },
-    { key: "actionGroup", label: "Action group", type: "text", required: false, default: "ag-polaris-ops", help: "Optional. Without one, the alert fires but nobody is notified." },
-    { key: "severity", label: "Severity", type: "select", required: true, default: "Sev2", options: ["Sev0", "Sev1", "Sev2", "Sev3", "Sev4"], help: "Sev0 is critical and Sev4 is verbose." },
-    { key: "autoResolve", label: "Automatically resolve alerts", type: "boolean", required: false, default: true, help: "Makes the alert stateful. In the API this is autoMitigate, which defaults to true." },
-  ],
+  simulator: {
+    armType: "Microsoft.Insights/metricAlerts",
+    apiVersion: "2018-03-01",
+    nameRule: "alert-rule",
+  },
 };
