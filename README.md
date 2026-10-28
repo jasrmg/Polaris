@@ -5,7 +5,7 @@ A free, browser-only place to learn and try out Azure. Nothing is hosted, nothin
 Polaris has two parts:
 
 - **Atlas (built):** a catalog of Azure resources. Each entry has a plain-English definition, an analogy, when to use it, prerequisites, example configuration (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
-- **Sandbox (planned):** create and configure those resources in a simulated tenant, with RBAC and a simulated Cloud Shell that runs `az` commands against an in-browser world.
+- **Sandbox (engine built, page not wired):** create and configure those resources in a simulated tenant, with RBAC and a simulated Cloud Shell that runs `az` commands against an in-browser world. The engine is in `src/engine/`. Try it is still disabled.
 
 Every fact in the catalog is checked against Microsoft Learn or other official Microsoft documentation.
 
@@ -15,7 +15,7 @@ Every fact in the catalog is checked against Microsoft Learn or other official M
 
 ## Status
 
-32 entries, including Tenant, Management group and Subscription. The sandbox design is in `docs/SIMULATOR.md`, `docs/RBAC.md` and `docs/CLOUDSHELL.md` (evidence in `docs/research/`). The simulator itself is not built yet. See the roadmap in `docs/PLAN.md`.
+32 entries, including Tenant, Management group and Subscription. The sandbox design is in `docs/SIMULATOR.md`, `docs/RBAC.md` and `docs/CLOUDSHELL.md` (evidence in `docs/research/`). The engine core is in `src/engine/` and is not connected to the catalog yet. See the roadmap in `docs/PLAN.md`.
 
 ## Run it
 
@@ -35,6 +35,7 @@ BICEP_PATH=/path/to/bicep npm run check:snippets   # compiles every Bicep exampl
 npm run lint
 npx tsc --noEmit
 npm run build                                       # static export; also validates all content
+npm test                                            # engine rules
 ```
 
 If the Bicep CLI is not found, `check:snippets` skips the Bicep checks and says so. Install it with `az bicep install` or from the official Bicep releases.
@@ -50,6 +51,7 @@ If the Bicep CLI is not found, `check:snippets` skips the Bicep checks and says 
 | `src/components/` | UI: explorer, hierarchy map, cards, detail view, modal, code blocks |
 | `src/components/resource-icon.tsx` | Maps an entry's icon name to a lucide icon |
 | `src/app/` | Next.js App Router pages: home, `/resources/<slug>/`, and static JSON used by the modal |
+| `src/engine/` | In-browser Azure world (not imported by the pages yet) |
 | `scripts/check-snippets.ts` | The snippet checker |
 | `docs/` | Plan (`PLAN.md`), sandbox design (`SIMULATOR.md`, `RBAC.md`, `CLOUDSHELL.md`), backlog, and `research/` (evidence reports with sources) |
 

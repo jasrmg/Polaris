@@ -6,16 +6,16 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 ## 0. Start here (handoff summary)
 
-**Last updated:** 2026-10-28. Checkpoints 1-10 are committed (design docs `4f8e0f5`, doc cleanup `ed05721`). Checkpoint 11 (schema migration and hierarchy entries) is done in the working tree and not committed.
+**Last updated:** 2026-10-28. Checkpoints 1-11 are committed (schema and hierarchy entries `27c7a12`, design docs `4f8e0f5`). Checkpoint 12 (engine core) is in the working tree and not committed yet.
 
 **What we are building.** Polaris is a free, browser-only place to learn and try out Azure. It has two parts:
 
 1. **Atlas (built, 32 entries):** a catalog of Azure resources. Each has a plain-English definition, an analogy, when to use it, prerequisites, examples (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
-2. **Sandbox (not started, the core of the product):** create and configure those resources in a simulated tenant, including RBAC, with a simulated Cloud Shell that runs `az` commands against the in-browser world. **Nothing is ever hosted and nothing ever talks to real Azure.** The goal is to get "the feel" of Azure for free.
+2. **Sandbox (engine core built, not wired to the page):** create and configure those resources in a simulated tenant, including RBAC, with a simulated Cloud Shell that runs `az` commands against the in-browser world. The engine can create, update and delete the current catalog types and stores the world in `localStorage`. Try it is still disabled, and RBAC and Policy are not evaluated yet. **Nothing is ever hosted and nothing ever talks to real Azure.** The goal is to get "the feel" of Azure for free.
 
 **Who it is for.** The owner is studying for AZ-104 and then AZ-400, but the product is **not exam-specific**. Exams are tags and study aids. Scope is "as many Azure resources and services as possible", RBAC included. **Polaris is meant to become multi-cloud, but version 1 contains only Azure.** As the owner studies other cloud providers (AWS first, then possibly GCP or others) they will be added, only after Azure v1 ships and Azure is covered (section 10). Design choices made now should not block that: keep Azure-specific details (hierarchy levels, example formats, regions, rule packs) separable from the generic engine and content shape.
 
-**Where we are.** Checkpoints 1-10 are done and committed. The catalog schema now has `kind`, `exams`, `tier` and service-area categories (checkpoint 11, see section 5). Tenant, Management group and Subscription are catalog entries. The sandbox engine is still not built. The next step after checkpoint 11 is committed is **checkpoint 12: engine core** (section 6).
+**Where we are.** Checkpoints 1-11 are done and committed. The catalog schema has `kind`, `exams`, `tier` and service-area categories (section 5). Tenant, Management group and Subscription are catalog entries. Checkpoint 12 added `src/engine/` (world, hierarchy, create/update/delete, names, CIDR, VM power, locks, provider registration, a versioned `localStorage` envelope). The catalog UI is unchanged. The next step is **checkpoint 13: directory and RBAC** (section 6).
 
 **Decisions already made by the owner (2026-10-27, details in section 14):** the Cloud Shell runs ARM JSON only in v1 (Bicep is compiled to ARM at build time); the sandbox has switchable identities ("act as"); one tenant with a default subscription and the ability to add subscriptions and management groups; built-in roles ship only if Learn documents them, with permissions taken from the owner's own `az role definition list` export.
 
@@ -32,6 +32,7 @@ BICEP_PATH=/path/to/bicep npm run check:snippets   # compile every Bicep example
 npm run lint
 npx tsc --noEmit
 npm run build                                # static export; also validates all content
+npm test                                     # engine rules (Node's test runner, via tsx)
 ```
 
 **Document map.**
@@ -67,7 +68,7 @@ Why the scope grew (history, newest first): on 2026-10-25 the owner decided the 
 | Cloud | Azure first and fully. AWS next (and maybe GCP) only after Azure v1 and coverage gates (section 10). |
 | Exams | Tags and study aids, not the boundary. AZ-104 first, then AZ-400 (section 11). Source of truth per exam is the official skills-measured list, re-fetched before planning each exam. |
 | RBAC | **In scope** (sandbox directory, roles, assignments, what-if). Built-in roles are imported as data (section 12). |
-| Governance (Policy, locks, tags, budgets) | **In scope**, because they decide whether an action succeeds. Planned for checkpoint 14. |
+| Governance (Policy, locks, tags, budgets) | **In scope**, because they decide whether an action succeeds. Lock checks run in the engine (checkpoint 12). Policy, budgets, and the lock and tag catalog entries stay in checkpoint 14. |
 | Application Gateway | Not in the catalog yet. In the backlog (it was excluded only because it is not an AZ-104 skills heading). |
 | Subscription, Resource Group, Management group, Tenant | Container entries, not ordinary resources. Resource Group exists. The others arrive in checkpoint 11. |
 | Networking | The largest group so far. |
@@ -135,7 +136,7 @@ Batching tip: verification of several entries can be split across read-only suba
 | Backup & recovery (1) | Recovery Services Vault (tier 2) |
 | Networking (15) | Virtual Network, Subnet, Public IP Address, Network Security Group, Application Security Group, Route Table, Virtual Network Peering, Network Virtual Appliance, Azure DNS Zone, Private DNS Zone, Load Balancer, Service Endpoint, Private Endpoint, Network Watcher (tier 1), Azure Bastion (tier 2) |
 
-Tier 1 is behaviour, tier 2 is lifecycle, tier 3 is catalog only. The assignment is the one in `docs/SIMULATOR.md` section 7, plus the three hierarchy entries at tier 3 because they have no pinned API version in an example yet. Every existing entry is tagged `az-104`. Network Watcher is under Networking.
+Tier 1 is behaviour, tier 2 is lifecycle, tier 3 is catalog only. The assignment is the one in `docs/SIMULATOR.md` section 7, plus the three hierarchy entries at tier 3 because they have no pinned API version in an example yet. Every existing entry is tagged `az-104`. Network Watcher is under Networking. Checkpoint 12 did not change the catalog.
 
 ## 6. Roadmap
 
@@ -145,26 +146,28 @@ Reordered 2026-10-25. Each checkpoint ends with the checks in section 3 and a co
 
 ### Done
 
-Checkpoints 1-10 (see the status log in section 9). Checkpoint 11 migrates the schema and adds the hierarchy entries.
+Checkpoints 1-12 (see the status log in section 9). Checkpoint 12 is not committed yet.
 
-### Finished in checkpoints 10 and 11
+### Finished in checkpoints 10, 11 and 12
 
 **Checkpoint 10 - Design the sandbox (documents and decisions, no UI)** *(done, 2026-10-27)*
 - Written: `docs/SIMULATOR.md` (world, pipeline, lifecycle, networking decisions N1-N17, tiers, schema decisions in its section 9, persistence, spike A verdict), `docs/RBAC.md` (directory, evaluator, roles dataset rule and import process, act as), `docs/CLOUDSHELL.md` (grammar, mini-shell, outputs, `--query`, errors, command waves, deployments and what-if, spike B, C and D verdicts), and the evidence in `docs/research/`.
 - Spike verdicts: **A** forms from `Azure/bicep-types-az` at build time plus a hand-written overlay (yes, with limits); **B** Bicep can compile in a browser (about 48.5 MB gzipped) but v1 ships ARM JSON only; **C** use `jmespath.js` 0.16.0, pinned, with a conformance test; **D** `az` help text may be reused (MIT), extracted only for the supported commands, with a fallback to hand-curated summaries.
 - **Good checkpoint for you to read and push back on.** Nothing gets built until you agree. The things to check are listed in section 14 under "To confirm".
 
-**Checkpoint 11 - Schema migration and hierarchy entries** *(done in the working tree, 2026-10-28)*
+**Checkpoint 11 - Schema migration and hierarchy entries** *(done, 2026-10-28, `27c7a12`)*
 - `kind`, `exams`, `tier` and service-area categories, as confirmed. Slim `simulator` block (ARM type, API version, name rule, provisioning only where Learn enumerates it). Create-form fields stay in checkpoint 15.
 - Filters by exam, kind and tier. A Dependencies tab on each entry. A skip link.
 - Tenant, Management group and Subscription, checked against Learn. They are tier 3.
 
-### Next
+**Checkpoint 12 - Engine core** *(done in the working tree, 2026-10-28, not committed)*
+- Pure TypeScript engine, no React, in `src/engine/core/` and `src/engine/azure/`. The UI does not import it, and Try it stays disabled.
+- World: one tenant, root management group "Tenant root group", one subscription, user "You" (Owner and Global Administrator). Create, update and delete for management groups, subscriptions, resource groups and the current catalog types. Name and CIDR checks, parent and region rules, VM start / stop / deallocate, provider registration, subscription states, and CanNotDelete / ReadOnly locks.
+- `localStorage` envelope (`polaris-world`, schema version 1) with reset, import and export. Rules do not call `Date.now()`; the caller passes `savedAt`.
+- Authorize and policy steps are traces that always pass. RBAC evaluation is checkpoint 13. Policy is checkpoint 14. Reachability (N1-N17) is checkpoint 16.
+- Tests use Node's built-in runner (`npm test`, via `tsx`). Vitest was not added. `npm install` failed with a certificate error in this environment.
 
-**Checkpoint 12 - Engine core** *(next)*
-- Pure TypeScript engine, no React: resource graph, create / update / delete / start / stop, lifecycle states (Creating -> Running, Stopped, Deallocated), name and CIDR validation, parent and region rules.
-- `localStorage` persistence with a versioned schema, reset, import and export.
-- Unit tests for every rule. Each rule carries a comment with its Learn URL.
+### Next
 
 **Checkpoint 13 - Directory and RBAC**
 - Import the built-in roles with `scripts/import-roles.ts` and an "as of" date, following the rule in `docs/RBAC.md` section 8: only roles Learn documents (499 of the owner's export plus 6 added by hand from Learn), permissions from the API export, subscription IDs stripped, raw exports kept in the git-ignored `data/raw/`.
@@ -173,7 +176,7 @@ Checkpoints 1-10 (see the status log in section 9). Checkpoint 11 migrates the s
 - Catalog entries: Role definition, Role assignment, Custom role, Managed identity, Service principal, User, Group.
 
 **Checkpoint 14 - Governance that changes outcomes**
-- Tags, resource locks (CanNotDelete, ReadOnly), and Azure Policy (assignments with deny and audit effects, built-in definitions as data). These matter to the sandbox because they decide whether an action succeeds.
+- Tags and Azure Policy (assignments with deny and audit effects, built-in definitions as data). CanNotDelete and ReadOnly locks are already enforced by the engine; this checkpoint adds the catalog entries. These matter to the sandbox because they decide whether an action succeeds.
 - Catalog entries for each.
 
 **Checkpoint 15 - Create pages ("Try it")**
@@ -252,8 +255,9 @@ These were starting points, not verified facts.
 | 8 | Compute: VM Scale Set, App Service Plan, App Service, Container Instances, Container Apps (22 entries). Also fixed long words stretching the detail page on phones. | Done | `83a50ba` |
 | 9 | Storage and monitor and backup: Blob Container, Azure Files Share, Log Analytics Workspace, Alert Rule, Action Group, Network Watcher, Recovery Services Vault (29 entries) | Done | `465731d` |
 | 10 | Design the sandbox (documents only): three design docs plus six research reports | Done | `4f8e0f5` |
-| 11 | Schema migration, filters, dependency tab, Tenant, Management group, Subscription | **Done in the working tree, not committed** | |
-| 12-20 | See roadmap in section 6 | Not started | |
+| 11 | Schema migration, filters, dependency tab, Tenant, Management group, Subscription | Done | `27c7a12` |
+| 12 | Engine core (world, hierarchy, create/update/delete, names, CIDR, VM power, locks). No UI. | Done, not committed | |
+| 13-20 | See roadmap in section 6 | Not started | |
 
 Docs-only commits: `71121bf` (first plan), `0c9ad5d` (roadmap reorder), `c0458c1` (plan refresh, real README, agent notes, backlog).
 

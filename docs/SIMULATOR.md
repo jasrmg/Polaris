@@ -213,18 +213,20 @@ Checkpoint 16 builds the reachability checker. The full algorithm, with every st
 
 Current catalog (29 entries) proposal: tier 1 = virtual network, subnet, network security group, application security group, route table, vnet peering, network virtual appliance, private DNS zone, Azure DNS zone, public IP address, network watcher, service endpoint, private endpoint, load balancer, resource group. Tier 2 = virtual machine, storage account, blob container, file share, app service plan, app service, container instances, container apps, VM scale set, Log Analytics workspace, alert rule, action group, Recovery Services vault, Azure Bastion. This is a proposal for review; it is changed in the entry file, not in code.
 
-## 8. Directory layout (proposal, built from checkpoint 12)
+## 8. Directory layout (engine core landed in checkpoint 12)
 
 ```
-src/engine/core/        generic: world store, id map, scheduler/clock, result and trace types, serialise/migrate
-src/engine/azure/       Azure pack: hierarchy rules, ARM ids, naming rules, subscription states, provider registration,
-                        rbac/, network/, governance/, deployments/
-src/engine/azure/data/  imported data: built-in roles, operation catalogue, generated resource schemas (section 11)
-src/cli/                tokenizer, shell interpreter, az parser, registry, output formatters (CLOUDSHELL.md)
+src/engine/core/        generic: world store, result and trace types, serialise. No Azure concepts.
+src/engine/azure/       Azure pack: hierarchy, ARM ids, naming, CIDR, subscription states, provider registration, locks, VM power
+src/engine/azure/data/  later: built-in roles, operation catalogue, generated resource schemas (section 11)
+src/engine/azure/rbac/  later (checkpoint 13)
+src/cli/                later: tokenizer, shell interpreter, az parser, registry, output formatters (CLOUDSHELL.md)
 src/content/            catalog entries (unchanged location until the multi-cloud refactor)
 ```
 
-Dependency rule: `core` imports nothing from `azure`; `cli` and the UI import the engine, never the other way round. A lint rule (`no-restricted-imports`) enforces it.
+Checkpoint 12 built `core` and the Azure pack above. The `data/`, `rbac/` and `cli/` folders are not created yet. Authorize and policy are trace lines that always pass until checkpoints 13 and 14.
+
+Dependency rule: `core` imports nothing from `azure`; `cli` and the UI import the engine, never the other way round. A lint rule (`no-restricted-imports`) enforces it. The UI does not import the engine yet.
 
 ## 9. Schema decisions for the catalog (applied in checkpoint 11)
 

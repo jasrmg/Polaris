@@ -13,6 +13,17 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    files: ["src/engine/core/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: ["@/engine/azure", "@/engine/azure/**", "@/content", "@/content/**"],
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;
