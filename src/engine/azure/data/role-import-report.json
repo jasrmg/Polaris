@@ -1,0 +1,369 @@
+{
+  "asOf": "2026-10-30",
+  "documentedOnLearn": 505,
+  "inExport": 970,
+  "shipped": 505,
+  "fromApi": 499,
+  "fromLearn": 6,
+  "permissionsNotPublished": [
+    "Monitored Objects Contributor"
+  ],
+  "notAssignableInSandbox": [
+    "Monitored Objects Contributor",
+    "Reservations Administrator",
+    "Reservations Reader",
+    "Service Group Administrator",
+    "Service Group Contributor",
+    "Service Group Reader"
+  ],
+  "undocumentedNotShipped": 471,
+  "permissionDiffs": [
+    {
+      "roleName": "Compute Gallery Sharing Admin",
+      "guid": "1ef6a3be-d0ac-425d-8c01-acb62866290b",
+      "onlyInApi": [
+        "Microsoft.Compute/locations/sharedGallerySubscriptions/sharedGalleries/accept/action",
+        "Microsoft.Compute/locations/sharedGallerySubscriptions/sharedGalleries/reject/action"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Compute Limit Operator",
+      "guid": "980cf6f7-edec-4fd1-8e9e-28f70b1d5258",
+      "onlyInApi": [
+        "Microsoft.ComputeLimit/locations/sharedLimitCaps/read",
+        "Microsoft.ComputeLimit/locations/sharedLimitCaps/write",
+        "Microsoft.ComputeLimit/locations/sharedLimitCaps/delete",
+        "Microsoft.ComputeLimit/locations/sharedLimitCaps/memberCapOverrides/read",
+        "Microsoft.ComputeLimit/locations/sharedLimitCaps/memberCapOverrides/write",
+        "Microsoft.ComputeLimit/locations/sharedLimitCaps/memberCapOverrides/delete",
+        "Microsoft.ComputeLimit/locations/features/read",
+        "Microsoft.ComputeLimit/locations/features/enable/action",
+        "Microsoft.ComputeLimit/locations/features/disable/action",
+        "Microsoft.ComputeLimit/locations/trustedHostSubscriptions/read",
+        "Microsoft.ComputeLimit/locations/trustedHostSubscriptions/write",
+        "Microsoft.ComputeLimit/locations/trustedHostSubscriptions/delete",
+        "Microsoft.ComputeLimit/locations/operationResults/read"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Disk Snapshot Contributor",
+      "guid": "7efff54f-a5b4-42b5-a1c5-5411624893ce",
+      "onlyInApi": [],
+      "onlyOnLearn": [
+        "Microsoft.Storage/storageAccounts/listkeys/action",
+        "Microsoft.Storage/storageAccounts/write",
+        "Microsoft.Storage/storageAccounts/read",
+        "Microsoft.Storage/storageAccounts/delete"
+      ]
+    },
+    {
+      "roleName": "Quantum Workspace Data Contributor",
+      "guid": "c1410b24-3e69-4857-8f86-4d0a2e603250",
+      "onlyInApi": [
+        "Microsoft.Quantum/Workspaces/chat/action"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Azure Front Door Profile Reader",
+      "guid": "662802e2-50f6-46b0-aed2-e834bacc6d12",
+      "onlyInApi": [
+        "Microsoft.Resources/deployments/read"
+      ],
+      "onlyOnLearn": [
+        "Microsoft.Resources/deployments/*"
+      ]
+    },
+    {
+      "roleName": "Backup Contributor",
+      "guid": "5e467623-bb1f-42f4-a55d-6e525e11384b",
+      "onlyInApi": [
+        "Microsoft.RecoveryServices/Vaults/backupCrossTenantVaultMappingStatus/action",
+        "Microsoft.RecoveryServices/Vaults/backupFabrics/getRPExtendedInfo/action",
+        "Microsoft.RecoveryServices/Vaults/backupFabrics/getRPExtendedInfoOperationResult/read",
+        "Microsoft.DataProtection/backupVaults/crossTenantVaultMappingStatus/action"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Backup Operator",
+      "guid": "00c29273-979b-4161-815c-10b084fb9324",
+      "onlyInApi": [
+        "Microsoft.RecoveryServices/Vaults/backupFabrics/getRPExtendedInfo/action",
+        "Microsoft.RecoveryServices/Vaults/backupFabrics/getRPExtendedInfoOperationResult/read"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Backup Reader",
+      "guid": "a795c7a0-d4a2-40c1-ae25-d81f01202912",
+      "onlyInApi": [
+        "Microsoft.RecoveryServices/Vaults/backupCrossTenantVaultMappingStatus/action",
+        "Microsoft.DataProtection/backupVaults/crossTenantVaultMappingStatus/action"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Azure Container Storage Contributor",
+      "guid": "95dd08a6-00bd-4661-84bf-f6726f83a4d0",
+      "onlyInApi": [],
+      "onlyOnLearn": [
+        "Microsoft.Authorization/roleAssignments/write",
+        "Microsoft.Authorization/roleAssignments/delete"
+      ]
+    },
+    {
+      "roleName": "Azure Container Storage Operator",
+      "guid": "08d4c71a-cc63-4ce4-a9c8-5dd251b4d619",
+      "onlyInApi": [],
+      "onlyOnLearn": [
+        "Microsoft.Compute/virtualMachines/read",
+        "Microsoft.Compute/virtualMachines/write",
+        "Microsoft.Compute/virtualMachineScaleSets/read",
+        "Microsoft.Compute/virtualMachineScaleSets/write",
+        "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/write",
+        "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read"
+      ]
+    },
+    {
+      "roleName": "Azure Container Storage Owner",
+      "guid": "95de85bd-744d-4664-9dde-11430bc34793",
+      "onlyInApi": [],
+      "onlyOnLearn": [
+        "Microsoft.Authorization/roleAssignments/write",
+        "Microsoft.Authorization/roleAssignments/delete"
+      ]
+    },
+    {
+      "roleName": "Azure Kubernetes Fleet Manager RBAC Reader",
+      "guid": "30b27cfc-9c84-438e-b0ce-70e35255df80",
+      "onlyInApi": [],
+      "onlyOnLearn": [
+        "Microsoft.ContainerService/fleets/placement.kubernetes-fleet.io/works/read"
+      ]
+    },
+    {
+      "roleName": "Azure Red Hat OpenShift Cloud Controller Manager",
+      "guid": "a1f96423-95ce-4224-ab27-4e3dc72facd4",
+      "onlyInApi": [
+        "Microsoft.Network/privatelinkservices/privateEndpointConnections/delete",
+        "Microsoft.Network/loadBalancers/delete"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Container Registry Contributor and Data Access Configuration Administrator",
+      "guid": "3bc748fc-213d-45c1-8d91-9da5725539b9",
+      "onlyInApi": [
+        "Microsoft.ContainerRegistry/registries/connectedRegistries/resync/action"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "SQL DB Contributor",
+      "guid": "9b7fa17d-e63e-47b0-bb0a-15c516ac86ec",
+      "onlyInApi": [
+        "Microsoft.Sql/managedInstances/advancedThreatProtectionSettings/*",
+        "Microsoft.Sql/managedInstances/databases/advancedThreatProtectionSettings/*",
+        "Microsoft.Sql/servers/databases/advancedThreatProtectionSettings/*",
+        "Microsoft.Sql/servers/databases/sqlVulnerabilityAssessments/*",
+        "Microsoft.Sql/servers/sqlVulnerabilityAssessments/*"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "SQL Server Contributor",
+      "guid": "6d8ee4ec-f05a-4a1d-8b00-a9b17e38b437",
+      "onlyInApi": [
+        "Microsoft.Sql/managedInstances/advancedThreatProtectionSettings/*",
+        "Microsoft.Sql/managedInstances/databases/advancedThreatProtectionSettings/*",
+        "Microsoft.Sql/servers/advancedThreatProtectionSettings/*",
+        "Microsoft.Sql/servers/databases/advancedThreatProtectionSettings/*",
+        "Microsoft.Sql/servers/databases/sqlVulnerabilityAssessments/*",
+        "Microsoft.Sql/servers/sqlVulnerabilityAssessments/*"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Azure AI Developer",
+      "guid": "64702f94-c441-49e6-a78b-ef80e0188fee",
+      "onlyInApi": [
+        "Microsoft.CognitiveServices/accounts/OpenAI/fine-tunes-deployments/write"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Cognitive Services Contributor",
+      "guid": "25fbc0a9-bd7c-42a3-aa1a-3b75d497ee68",
+      "onlyInApi": [],
+      "onlyOnLearn": [
+        "Microsoft.CognitiveServices/raiPolicy/write",
+        "Microsoft.CognitiveServices/raiPolicy/delete",
+        "Microsoft.CognitiveServices/raiExternalSafetyProviders/write",
+        "Microsoft.CognitiveServices/raiExternalSafetyProviders/delete"
+      ]
+    },
+    {
+      "roleName": "Cognitive Services User",
+      "guid": "a97b65f3-24c7-4388-baec-2e87135dc908",
+      "onlyInApi": [
+        "Microsoft.CognitiveServices/accounts/projects/connections/listsecrets/action",
+        "Microsoft.CognitiveServices/accounts/AIServices/agents/endpoints/UserIdentityImpersonation/action",
+        "Microsoft.CognitiveServices/accounts/OpenAI/fine-tunes-deployments/write",
+        "Microsoft.CognitiveServices/accounts/AIServices/fine_tuning_deployments/write"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Foundry Owner",
+      "guid": "c883944f-8b7b-4483-af10-35834be79c4a",
+      "onlyInApi": [
+        "Microsoft.CognitiveServices/accounts/AIServices/agents/endpoints/UserIdentityImpersonation/action"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Foundry Project Manager",
+      "guid": "eadc314b-1a2d-4efa-be10-5d325db5065e",
+      "onlyInApi": [
+        "Microsoft.CognitiveServices/accounts/AIServices/agents/endpoints/UserIdentityImpersonation/action",
+        "Microsoft.CognitiveServices/accounts/OpenAI/fine-tunes-deployments/write",
+        "Microsoft.CognitiveServices/accounts/AIServices/fine_tuning_deployments/write"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Foundry User",
+      "guid": "53ca6127-db72-4b80-b1b0-d745d6d5456d",
+      "onlyInApi": [
+        "Microsoft.CognitiveServices/accounts/projects/connections/listsecrets/action",
+        "Microsoft.CognitiveServices/accounts/AIServices/agents/endpoints/UserIdentityImpersonation/action",
+        "Microsoft.CognitiveServices/accounts/OpenAI/fine-tunes-deployments/write",
+        "Microsoft.CognitiveServices/accounts/AIServices/fine_tuning_deployments/write"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Device Update Administrator",
+      "guid": "02ca0879-e8e4-47a5-a61e-5c618b76e64a",
+      "onlyInApi": [
+        "Microsoft.DeviceUpdate/updateInstances/read",
+        "Microsoft.DeviceUpdate/linkedAccounts/read"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Azure Migrate Execute Expert",
+      "guid": "1cfa4eac-9a23-481c-a793-bfb6958e836b",
+      "onlyInApi": [
+        "Microsoft.Migrate/migrateProjects/taskSummary/action"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Azure Migrate Service Reader",
+      "guid": "ba480ccd-6499-4709-b581-8f38bb215c63",
+      "onlyInApi": [
+        "Microsoft.RecoveryServices/vaults/replicationJobs/read",
+        "Microsoft.DataReplication/replicationVaults/protectedItems/read"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Azure Local Migrate Execute Expert",
+      "guid": "1cfa4eac-9a23-481c-a793-bfb6958e836c",
+      "onlyInApi": [
+        "Microsoft.Migrate/migrateProjects/taskSummary/action"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Azure Connected Machine Resource Manager",
+      "guid": "f5819b54-e033-4d82-ac66-4fec3cbf3f4c",
+      "onlyInApi": [
+        "Microsoft.GuestConfiguration/guestConfigurationAssignments/delete"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "SRE Agent Administrator",
+      "guid": "e79298df-d852-4c6d-84f9-5d13249d1e55",
+      "onlyInApi": [
+        "Microsoft.App/agents/*/action",
+        "Microsoft.App/agents/*/listSecrets/action"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "SRE Agent Reader",
+      "guid": "a4b156ac-253f-4a1a-9851-96d62b71b047",
+      "onlyInApi": [
+        "Microsoft.Insights/alertRules/read"
+      ],
+      "onlyOnLearn": [
+        "Microsoft.Insights/alertRules/*"
+      ]
+    },
+    {
+      "roleName": "SRE Agent Standard User",
+      "guid": "2d84a65a-63b2-4343-bbb6-31105d857bc1",
+      "onlyInApi": [
+        "Microsoft.App/agents/extendedAgents/read"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Azure Stack HCI Administrator",
+      "guid": "bda0d508-adf1-4af0-9c28-88919fc3ae06",
+      "onlyInApi": [
+        "Microsoft.Insights/dataCollectionRuleAssociations/read",
+        "Microsoft.Insights/dataCollectionRuleAssociations/write"
+      ],
+      "onlyOnLearn": []
+    },
+    {
+      "roleName": "Azure Stack HCI VM Contributor",
+      "guid": "874d1c73-6003-4e60-a13a-cb31ea190a85",
+      "onlyInApi": [
+        "Microsoft.Compute/disks/delete",
+        "Microsoft.Compute/disks/write",
+        "Microsoft.Compute/disks/read",
+        "Microsoft.Compute/disks/beginGetAccess/action",
+        "Microsoft.AzureStackHCI/clusters/volumes/deploy/action"
+      ],
+      "onlyOnLearn": []
+    }
+  ],
+  "descriptionDiffs": [
+    "Classic Virtual Machine Contributor",
+    "Compute Gallery Sharing Admin",
+    "Quantum Workspace Data Contributor",
+    "VM Restore Operator",
+    "Azure Arc Kubernetes Viewer",
+    "Azure Kubernetes Fleet Manager RBAC Admin for Member Clusters",
+    "Azure Kubernetes Fleet Manager RBAC Cluster Admin for Member Clusters",
+    "Azure Kubernetes Fleet Manager RBAC Reader",
+    "Azure Kubernetes Fleet Manager RBAC Reader for Member Clusters",
+    "Azure Kubernetes Fleet Manager RBAC Writer",
+    "Azure Kubernetes Fleet Manager RBAC Writer for Member Clusters",
+    "Azure Connected SQL Server Onboarding",
+    "Cosmos DB Operator",
+    "SQL Managed Instance Contributor",
+    "AzureML Registry User",
+    "Cognitive Services Custom Vision Deployment",
+    "Cognitive Services Custom Vision Labeler",
+    "Cognitive Services Custom Vision Reader",
+    "Cognitive Services Custom Vision Trainer",
+    "Cognitive Services QnA Maker Editor",
+    "Cognitive Services QnA Maker Reader",
+    "Cognitive Services Speech User",
+    "Search Index Data Contributor",
+    "Search Index Data Reader",
+    "Search Service Contributor",
+    "Device Update Administrator",
+    "Key Vault Crypto User",
+    "SRE Agent Administrator"
+  ]
+}

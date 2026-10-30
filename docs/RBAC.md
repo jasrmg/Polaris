@@ -1,6 +1,6 @@
 # Polaris sandbox: Azure RBAC and the directory
 
-**Status:** design, checkpoint 10 (written 2026-10-27). Built in checkpoint 13 (directory and RBAC), with the "act as" identity also used by checkpoint 17 (Cloud Shell).
+**Status:** engine and catalog entries built in checkpoint 13 (2026-10-30). The what-if page and the permissions-page operation catalogue are not built. "Act as" is also used by checkpoint 17 (Cloud Shell).
 **Siblings:** [`SIMULATOR.md`](SIMULATOR.md) (world, pipeline, scopes) and [`CLOUDSHELL.md`](CLOUDSHELL.md). Evidence: [`research/rbac-model.md`](research/rbac-model.md) (shorthand `rbac`) and [`research/azure-resource-model.md`](research/azure-resource-model.md).
 Tags **[Learn]**, **[Decision]**, **[Owner]**, **[Open]** mean the same as in `SIMULATOR.md` section 0. URLs below are on `https://learn.microsoft.com/en-us`, written without that prefix.
 
@@ -198,7 +198,7 @@ The 34 differences show that Learn's generated pages do not always match what th
 ### 8.3 Import process (checkpoint 13)
 
 - `scripts/import-roles.ts` reads a raw export from `data/raw/` (git-ignored), reads Learn's built-in roles page for the documented GUID list, and writes `src/engine/azure/data/built-in-roles.json` (about 0.6 MB, loaded only when the RBAC screens open).
-- **Privacy [hard rule]:** the raw export contains the owner's subscription ID inside every role `id` (`/subscriptions/<guid>/providers/...`). The importer rewrites it to `/providers/Microsoft.Authorization/roleDefinitions/{guid}` (the form Learn shows) and fails if any `/subscriptions/` string remains. Raw exports never enter git: `data/raw/` and `roles_*.json` are in `.gitignore`. The owner's export currently sits in their Downloads folder.
+- **Privacy [hard rule]:** the raw export contains the owner's subscription ID inside every role `id` (`/subscriptions/<guid>/providers/...`). The importer rewrites the id to `/providers/Microsoft.Authorization/roleDefinitions/{guid}` (the form Learn shows) and fails if that subscription ID remains, or if a role id still contains `/subscriptions/`. Action strings such as `Microsoft.Resources/subscriptions/resourceGroups/read` are kept. Raw exports never enter git: `data/raw/` and `roles_*.json` are in `.gitignore`. The owner's export currently sits in their Downloads folder.
 - The export is UTF-16 when produced by a PowerShell redirect; the importer detects the encoding.
 - Output carries `asOf`, the count and the list of differences. A check fails the build if a shipped role has no Learn page, if a GUID repeats, or if `assignableScopes` includes a subscription-specific value.
 - Re-run periodically (Microsoft adds roles often); the diff is reviewed by a human.

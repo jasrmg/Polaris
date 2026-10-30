@@ -5,7 +5,7 @@ A free, browser-only place to learn and try out Azure. Nothing is hosted, nothin
 Polaris has two parts:
 
 - **Atlas (built):** a catalog of Azure resources. Each entry has a plain-English definition, an analogy, when to use it, prerequisites, example configuration (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
-- **Sandbox (engine built, page not wired):** create and configure those resources in a simulated tenant, with RBAC and a simulated Cloud Shell that runs `az` commands against an in-browser world. The engine is in `src/engine/`. Try it is still disabled.
+- **Sandbox (engine and RBAC built, page not wired):** create and configure those resources in a simulated tenant, with RBAC and a simulated Cloud Shell that runs `az` commands against an in-browser world. The engine is in `src/engine/`. Try it is still disabled.
 
 Every fact in the catalog is checked against Microsoft Learn or other official Microsoft documentation.
 
@@ -15,7 +15,7 @@ Every fact in the catalog is checked against Microsoft Learn or other official M
 
 ## Status
 
-32 entries, including Tenant, Management group and Subscription. The sandbox design is in `docs/SIMULATOR.md`, `docs/RBAC.md` and `docs/CLOUDSHELL.md` (evidence in `docs/research/`). The engine core is in `src/engine/` and is not connected to the catalog yet. See the roadmap in `docs/PLAN.md`.
+39 entries, including the directory and RBAC entries (User, Group, Service principal, Managed identity, Role definition, Role assignment, Custom role). The sandbox design is in `docs/SIMULATOR.md`, `docs/RBAC.md` and `docs/CLOUDSHELL.md` (evidence in `docs/research/`). The engine in `src/engine/` evaluates Azure RBAC and is not connected to the catalog yet. See the roadmap in `docs/PLAN.md`.
 
 ## Run it
 

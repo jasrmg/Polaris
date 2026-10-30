@@ -218,13 +218,13 @@ Current catalog (29 entries) proposal: tier 1 = virtual network, subnet, network
 ```
 src/engine/core/        generic: world store, result and trace types, serialise. No Azure concepts.
 src/engine/azure/       Azure pack: hierarchy, ARM ids, naming, CIDR, subscription states, provider registration, locks, VM power
-src/engine/azure/data/  later: built-in roles, operation catalogue, generated resource schemas (section 11)
-src/engine/azure/rbac/  later (checkpoint 13)
+src/engine/azure/data/  built-in roles (checkpoint 13). Operation catalogue and generated resource schemas are later.
+src/engine/azure/rbac/  evaluator, directory operations, built-in role lookup (checkpoint 13)
 src/cli/                later: tokenizer, shell interpreter, az parser, registry, output formatters (CLOUDSHELL.md)
 src/content/            catalog entries (unchanged location until the multi-cloud refactor)
 ```
 
-Checkpoint 12 built `core` and the Azure pack above. The `data/`, `rbac/` and `cli/` folders are not created yet. Authorize and policy are trace lines that always pass until checkpoints 13 and 14.
+Checkpoint 12 built `core` and the Azure pack. Checkpoint 13 added `data/` and `rbac/`. Authorize calls the evaluator. Policy is still a trace that always passes until checkpoint 14. `cli/` is not created yet.
 
 Dependency rule: `core` imports nothing from `azure`; `cli` and the UI import the engine, never the other way round. A lint rule (`no-restricted-imports`) enforces it. The UI does not import the engine yet.
 

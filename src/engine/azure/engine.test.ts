@@ -18,10 +18,26 @@ import {
   registerProvider,
   setPower,
   setSubscriptionState,
+  assignRole,
+  elevateAccess,
   starterWorld,
   updateResourceGroup,
 } from "./index";
-import { SUBSCRIPTION_ID, TENANT_ID } from "./constants";
+import { OWNER_ROLE_DEFINITION_ID, SUBSCRIPTION_ID, TENANT_ID, USER_ID } from "./constants";
+import type { World } from "./types";
+
+function withRootOwner(world: World): World {
+  const elevated = elevateAccess(world, "00000000-0000-0000-0000-000000000010");
+  assert.equal(elevated.ok, true, elevated.error?.message);
+  const assigned = assignRole(elevated.value!, {
+    name: "00000000-0000-0000-0000-000000000011",
+    principalId: USER_ID,
+    roleDefinitionId: OWNER_ROLE_DEFINITION_ID,
+    scope: "/",
+  });
+  assert.equal(assigned.ok, true, assigned.error?.message);
+  return assigned.value!;
+}
 
 // Learn: https://learn.microsoft.com/en-us/azure/governance/management-groups/overview
 describe("hierarchy", () => {
@@ -34,13 +50,13 @@ describe("hierarchy", () => {
     assert.equal(root.name, TENANT_ID);
     assert.equal(root.parentId, null);
     assert.deepEqual(world.directory.users[world.session.actingPrincipalId].directoryRoles, ["Global Administrator"]);
-    const deleted = deleteManagementGroup(world, root.id);
+    const deleted = deleteManagementGroup(withRootOwner(world), root.id);
     assert.equal(deleted.ok, false);
     assert.equal(deleted.error?.learnUrl, LEARN.managementGroups);
   });
 
   it("stops at six levels below the root", () => {
-    let world = starterWorld();
+    let world = withRootOwner(starterWorld());
     let parent = Object.values(world.managementGroups)[0].id;
     for (let level = 1; level <= 6; level += 1) {
       const created = createManagementGroup(world, { name: `group-${level}`, displayName: `Group ${level}`, parentId: parent });

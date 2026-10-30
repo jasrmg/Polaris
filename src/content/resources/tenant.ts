@@ -56,6 +56,6 @@ export const tenant: ResourceInput = {
     },
   ],
 
-  related: ["management-group", "subscription"],
+  related: ["management-group", "subscription", "user", "group"],
   docsUrl: "https://learn.microsoft.com/en-us/entra/fundamentals/how-subscriptions-associated-directory",
 };

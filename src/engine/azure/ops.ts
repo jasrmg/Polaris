@@ -1,6 +1,6 @@
 /**
  * Create, update, delete, and virtual machine power operations.
- * Authorization always passes until checkpoint 13. Policy always passes until checkpoint 14.
+ * Authorization uses the RBAC evaluator. Policy always passes until checkpoint 14.
  */
 
 import { failure, success, type EngineError, type Result, type TraceLine } from "../core/result";
@@ -22,6 +22,17 @@ import {
   validateTags,
   validateVnetPrefixes,
 } from "./rules";
+import {
+  applyAssignment,
+  applyCustomRole,
+  applyDeleteAssignment,
+  applyDeleteCustomRole,
+  findActor,
+  removeOwnedIdentities,
+  type AssignmentInput,
+  type CustomRoleInput,
+} from "./rbac/directory";
+import { authorizationMessage, evaluateAccess } from "./rbac/evaluate";
 import type { HttpMethod, ManagementGroup, PowerState, Resource, ResourceGroup, SubscriptionState, World } from "./types";
 
 const CHILD_PARENT: Record<string, string> = {
@@ -42,16 +53,24 @@ function traceOk(trace: TraceLine[], step: string, detail?: string): TraceLine[]
   return [...trace, { step, ok: true, detail }];
 }
 
+function controlAction(method: HttpMethod, armType: string): string {
+  const verb = method === "GET" ? "read" : method === "DELETE" ? "delete" : method === "POST" ? "action" : "write";
+  if (armType.toLowerCase() === "microsoft.resources/resourcegroups") {
+    return `Microsoft.Resources/subscriptions/resourceGroups/${verb}`;
+  }
+  return `${armType}/${verb}`;
+}
+
 function gate(
   world: World,
   method: HttpMethod,
   scopeId: string,
   armType: string | null,
   run: (world: World) => { world: World } | { error: EngineError },
-  options?: { ignoreSubscriptionState?: boolean },
+  options?: { ignoreSubscriptionState?: boolean; action?: string },
 ): Result<World> {
   let trace: TraceLine[] = [{ step: "parse", ok: true }];
-  const actor = world.directory.users[world.session.actingPrincipalId];
+  const actor = findActor(world, world.session.actingPrincipalId);
   if (!actor) {
     return failure(trace, {
       code: "AuthenticationFailed",
@@ -60,7 +79,32 @@ function gate(
     });
   }
   trace = traceOk(trace, "authenticate", actor.displayName);
-  trace = traceOk(trace, "authorize", "Authorization is not evaluated until checkpoint 13.");
+  const action = options?.action ?? (armType ? controlAction(method, armType) : null);
+  if (!action) {
+    return failure(trace, {
+      code: "InvalidAction",
+      message: "This operation has no Azure action string. (sandbox wording)",
+      step: "authorize",
+    });
+  }
+  const decision = evaluateAccess(world, {
+    principalId: actor.id,
+    action,
+    scope: scopeId,
+    plane: "control",
+  });
+  if (decision.decision !== "allowed") {
+    return failure(trace, {
+      code: decision.decision === "conditional" ? "ConditionNotEvaluated" : "AuthorizationFailed",
+      message:
+        decision.decision === "conditional"
+          ? `A role assignment for '${actor.displayName}' matches '${action}', but it has a condition and this sandbox does not evaluate conditions.`
+          : authorizationMessage(actor.displayName, actor.id, action, scopeId),
+      step: "authorize",
+      learnUrl: decision.decision === "conditional" ? LEARN.roleDefinitions : LEARN.authorizationFailed,
+    });
+  }
+  trace = traceOk(trace, "authorize", action);
 
   const parsed = parseId(scopeId);
   if (parsed?.subscriptionId && !options?.ignoreSubscriptionState) {
@@ -120,7 +164,8 @@ export function createManagementGroup(
   input: { name: string; displayName: string; parentId?: string },
 ): Result<World> {
   const id = managementGroupId(input.name);
-  return gate(world, "PUT", id, null, (current) => {
+  const parentScope = input.parentId ?? managementGroupId(world.tenant.id);
+  return gate(world, "PUT", parentScope, null, (current) => {
     const nameError = validateName("Microsoft.Management/managementGroups", input.name);
     if (nameError) return { error: nameError };
     const taken = Object.values(current.managementGroups).some((group) => sameName(group.name, input.name));
@@ -176,7 +221,7 @@ export function createManagementGroup(
       tenantId: current.tenant.id,
     };
     return { world: next };
-  });
+  }, { action: "Microsoft.Management/managementGroups/write" });
 }
 
 export function deleteManagementGroup(world: World, id: string): Result<World> {
@@ -211,7 +256,7 @@ export function deleteManagementGroup(world: World, id: string): Result<World> {
     const next = cloneWorld(current);
     delete next.managementGroups[canonicalId(group.id)];
     return { world: next };
-  });
+  }, { action: "Microsoft.Management/managementGroups/delete" });
 }
 
 export function createSubscription(
@@ -262,12 +307,13 @@ export function createSubscription(
     };
     next.providerRegistrations[canonicalId(id)] = {};
     return { world: next };
-  });
+  }, { action: "Microsoft.Management/managementGroups/subscriptions/write" });
 }
 
 export function setSubscriptionState(world: World, subGuid: string, state: SubscriptionState): Result<World> {
   const id = subscriptionId(subGuid);
-  return gate(world, "GET", id, null, (current) => {
+  const action = state === "Disabled" || state === "Deleted" ? "Microsoft.Subscription/cancel/action" : "Microsoft.Subscription/enable/action";
+  return gate(world, "POST", id, null, (current) => {
     const sub = findSubscription(current, subGuid);
     if (!sub) return { error: missing("Subscription", id, LEARN.subscriptionGet) };
     const next = cloneWorld(current);
@@ -280,7 +326,7 @@ export function setSubscriptionState(world: World, subGuid: string, state: Subsc
       }
     }
     return { world: next };
-  }, { ignoreSubscriptionState: true });
+  }, { ignoreSubscriptionState: true, action });
 }
 
 export function createResourceGroup(
@@ -358,7 +404,7 @@ export function updateResourceGroup(
     const next = cloneWorld(current);
     next.resourceGroups[canonicalId(group.id)] = { ...group, tags: input.tags ?? group.tags };
     return { world: next };
-  });
+  }, { action: "Microsoft.Resources/subscriptions/resourceGroups/write" });
 }
 
 export interface CreateResourceInput {
@@ -526,7 +572,8 @@ export function updateResource(
   id: string,
   input: { tags?: Record<string, string>; properties?: Record<string, unknown>; location?: string },
 ): Result<World> {
-  return gate(world, "PATCH", id, null, (current) => {
+  const armType = parseId(id)?.armType;
+  return gate(world, "PATCH", id, armType ?? null, (current) => {
     const existing = current.resources[canonicalId(id)];
     if (!existing) return { error: missing("Resource", id, LEARN.armOverview) };
     if (input.location && input.location.toLowerCase() !== existing.location.toLowerCase()) {
@@ -571,8 +618,8 @@ export function deleteResource(world: World, id: string): Result<World> {
     for (const key of Object.keys(next.resources)) {
       if (key === canonicalId(existing.id) || key.startsWith(prefix)) delete next.resources[key];
     }
-    return { world: next };
-  });
+    return { world: removeOwnedIdentities(next, existing.id) };
+  }, { action: parseId(id)?.armType ? `${parseId(id)?.armType}/delete` : undefined });
 }
 
 export function deleteResourceGroup(world: World, id: string): Result<World> {
@@ -603,10 +650,11 @@ export function deleteResourceGroup(world: World, id: string): Result<World> {
     for (const key of insideIds) delete next.resources[key];
     delete next.resourceGroups[canonicalId(group.id)];
     return { world: next };
-  });
+  }, { action: "Microsoft.Resources/subscriptions/resourceGroups/delete" });
 }
 
 export function setPower(world: World, id: string, action: "start" | "stop" | "deallocate"): Result<World> {
+  const verb = action === "start" ? "start" : action === "deallocate" ? "deallocate" : "powerOff";
   return gate(world, "POST", id, "Microsoft.Compute/virtualMachines", (current) => {
     const existing = current.resources[canonicalId(id)];
     if (!existing || existing.type.toLowerCase() !== "microsoft.compute/virtualmachines") {
@@ -630,7 +678,7 @@ export function setPower(world: World, id: string, action: "start" | "stop" | "d
       properties: { ...existing.properties, powerState: nextPower },
     };
     return { world: next };
-  });
+  }, { action: `Microsoft.Compute/virtualMachines/${verb}/action` });
 }
 
 export function registerProvider(world: World, namespace: string, subscriptionIdValue?: string): Result<World> {
@@ -643,7 +691,7 @@ export function registerProvider(world: World, namespace: string, subscriptionId
     const key = canonicalId(sub.id);
     next.providerRegistrations[key] = { ...(next.providerRegistrations[key] ?? {}), [namespace.toLowerCase()]: "Registered" };
     return { world: next };
-  });
+  }, { action: `${namespace}/register/action` });
 }
 
 export function unregisterProvider(world: World, namespace: string, subscriptionIdValue?: string): Result<World> {
@@ -669,7 +717,7 @@ export function unregisterProvider(world: World, namespace: string, subscription
     delete table[namespace.toLowerCase()];
     next.providerRegistrations[key] = table;
     return { world: next };
-  });
+  }, { action: `${namespace}/unregister/action` });
 }
 
 export function putLock(
@@ -694,19 +742,67 @@ export function putLock(
     const next = cloneWorld(current);
     next.locks[canonicalId(id)] = { id, name: input.name, level: input.level, scope: input.scope };
     return { world: next };
+  }, { action: "Microsoft.Authorization/locks/write" });
+}
+
+export function assignRole(world: World, input: AssignmentInput): Result<World> {
+  return gate(world, "PUT", input.scope, null, (current) => applyAssignment(current, input), {
+    action: "Microsoft.Authorization/roleAssignments/write",
+  });
+}
+
+export function deleteRoleAssignment(world: World, idOrName: string, scope: string): Result<World> {
+  return gate(world, "DELETE", scope, null, (current) => applyDeleteAssignment(current, idOrName), {
+    action: "Microsoft.Authorization/roleAssignments/delete",
+  });
+}
+
+export function createCustomRole(world: World, input: CustomRoleInput): Result<World> {
+  const primary = input.assignableScopes[0] ?? "/";
+  return gate(world, "PUT", primary, null, (current) => {
+    for (const scope of input.assignableScopes) {
+      const locked = lockConflict(current, scope, "PUT");
+      if (locked) return { error: locked };
+      const actor = findActor(current, current.session.actingPrincipalId);
+      if (!actor) {
+        return { error: { code: "AuthenticationFailed", message: "The acting identity is not in this directory. (sandbox wording)", step: "authenticate" } };
+      }
+      const decision = evaluateAccess(current, {
+        principalId: actor.id,
+        action: "Microsoft.Authorization/roleDefinitions/write",
+        scope,
+        plane: "control",
+      });
+      if (decision.decision !== "allowed") {
+        return {
+          error: {
+            code: "AuthorizationFailed",
+            message: authorizationMessage(actor.displayName, actor.id, "Microsoft.Authorization/roleDefinitions/write", scope),
+            step: "authorize",
+            learnUrl: LEARN.authorizationFailed,
+          },
+        };
+      }
+    }
+    return applyCustomRole(current, input);
+  }, { action: "Microsoft.Authorization/roleDefinitions/write" });
+}
+
+export function deleteCustomRole(world: World, idOrName: string, scope: string): Result<World> {
+  return gate(world, "DELETE", scope, null, (current) => applyDeleteCustomRole(current, idOrName), {
+    action: "Microsoft.Authorization/roleDefinitions/delete",
   });
 }
 
 export function getResource(world: World, id: string): Result<Resource> {
-  const parsed = parseId(id);
-  const sub = parsed?.subscriptionId ? findSubscription(world, parsed.subscriptionId) : null;
-  if (sub) {
-    const blocked = subscriptionAllows(sub.state, "GET");
-    if (blocked) return failure([{ step: "subscription state", ok: false }], blocked);
-  }
-  const resource = world.resources[canonicalId(id)];
-  if (!resource) return failure([], missing("Resource", id, LEARN.armOverview));
-  return success([{ step: "subscription state", ok: true }], resource);
+  const armType = parseId(id)?.armType ?? null;
+  const checked = gate(world, "GET", id, armType, (current) => {
+    if (!current.resources[canonicalId(id)]) return { error: missing("Resource", id, LEARN.armOverview) };
+    return { world: current };
+  });
+  if (!checked.ok || !checked.value) return { ok: false, error: checked.error, trace: checked.trace };
+  const resource = checked.value.resources[canonicalId(id)];
+  return success(checked.trace, resource);
 }
 
 export function advance(world: World, ms: number): World {

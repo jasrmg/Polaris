@@ -127,8 +127,15 @@ export function ancestorScopes(world: World, id: string): string[] {
     scopes.push(`/subscriptions/${parsed.subscriptionId}`);
   } else if (parsed?.resourceGroup && parsed.subscriptionId) {
     scopes.push(`/subscriptions/${parsed.subscriptionId}`);
-  } else if (parsed?.subscriptionId && !parsed.resourceGroup) {
-    // subscription itself is already in the list
+  } else if (parsed?.managementGroup) {
+    let parent: string | null = world.managementGroups[canonicalId(id)]?.parentId ?? null;
+    const seen = new Set<string>();
+    while (parent) {
+      if (seen.has(canonicalId(parent))) break;
+      seen.add(canonicalId(parent));
+      scopes.push(parent);
+      parent = world.managementGroups[canonicalId(parent)]?.parentId ?? null;
+    }
   }
   const subGuid = parsed?.subscriptionId;
   if (subGuid) {
@@ -142,6 +149,7 @@ export function ancestorScopes(world: World, id: string): string[] {
       parent = world.managementGroups[canonicalId(parent)]?.parentId ?? null;
     }
   }
+  if (!scopes.some((scope) => scope === "/")) scopes.push("/");
   return scopes;
 }
 

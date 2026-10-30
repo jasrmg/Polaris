@@ -26,12 +26,28 @@ export {
   getResource,
   putLock,
   registerProvider,
+  assignRole,
+  createCustomRole,
+  deleteCustomRole,
+  deleteRoleAssignment,
   setPower,
   setSubscriptionState,
   unregisterProvider,
   updateResource,
   updateResourceGroup,
 } from "./ops";
+export {
+  addGroupMember,
+  clearElevatedAccess,
+  createGroup,
+  createManagedIdentity,
+  createServicePrincipal,
+  createUser,
+  elevateAccess,
+  setActingPrincipal,
+} from "./rbac/directory";
+export { evaluateAccess, findRole } from "./rbac/evaluate";
+export { builtInRoleFile, findBuiltInRole } from "./rbac/dataset";
 export { acceptCurrentSchema, createLocalStorageStore, createMemoryStore, importEnvelope, POLARIS_WORLD_KEY };
 export type { World, Resource, PowerState, SubscriptionState } from "./types";
 export type { EngineOptions, CreateResourceInput } from "./ops";

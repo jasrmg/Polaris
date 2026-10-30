@@ -36,4 +36,13 @@ export const LEARN = {
   tenant: "https://learn.microsoft.com/en-us/entra/fundamentals/create-new-tenant",
   trust: "https://learn.microsoft.com/en-us/entra/fundamentals/how-subscriptions-associated-directory",
   ownerRole: "https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/privileged#owner",
+  rbacOverview: "https://learn.microsoft.com/en-us/azure/role-based-access-control/overview",
+  roleDefinitions: "https://learn.microsoft.com/en-us/azure/role-based-access-control/role-definitions",
+  roleAssignments: "https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-steps",
+  customRoles: "https://learn.microsoft.com/en-us/azure/role-based-access-control/custom-roles",
+  builtInRoles: "https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles",
+  elevate: "https://learn.microsoft.com/en-us/azure/role-based-access-control/elevate-access-global-admin",
+  authorizationFailed: "https://learn.microsoft.com/en-us/azure/role-based-access-control/troubleshooting",
+  denyAssignments: "https://learn.microsoft.com/en-us/azure/role-based-access-control/deny-assignments",
+  entraRoles: "https://learn.microsoft.com/en-us/azure/role-based-access-control/rbac-and-directory-admin-roles",
 } as const;

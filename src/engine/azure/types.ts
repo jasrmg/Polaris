@@ -33,10 +33,26 @@ export interface DirectoryUser {
   directoryRoles: string[];
 }
 
+export interface DirectoryGroup {
+  id: string;
+  displayName: string;
+  /** User, group and service principal ids. Cycles are rejected. */
+  members: string[];
+}
+
+export interface DirectoryServicePrincipal {
+  id: string;
+  appId: string;
+  displayName: string;
+  directoryRoles: string[];
+  /** Set when this service principal is a managed identity. A managed identity has no separate principalType. */
+  managedIdentity?: { kind: "system" | "user"; ownerId?: string };
+}
+
 export interface Directory {
   users: Record<string, DirectoryUser>;
-  groups: Record<string, { id: string; displayName: string; members: string[] }>;
-  servicePrincipals: Record<string, { id: string; appId: string; displayName: string }>;
+  groups: Record<string, DirectoryGroup>;
+  servicePrincipals: Record<string, DirectoryServicePrincipal>;
 }
 
 export interface ManagementGroup {
@@ -80,6 +96,48 @@ export interface Resource {
   properties: Record<string, unknown>;
 }
 
+export interface RolePermission {
+  actions: string[];
+  notActions: string[];
+  dataActions: string[];
+  notDataActions: string[];
+  condition?: string | null;
+  conditionVersion?: string | null;
+}
+
+export interface RoleDefinition {
+  id: string;
+  name: string;
+  roleName: string;
+  description: string;
+  roleType: "BuiltInRole" | "CustomRole";
+  assignableScopes: string[];
+  permissions: RolePermission[];
+  source: "api-export" | "learn" | "custom";
+  /** False when Learn lists the role but does not publish its actions. */
+  permissionsPublished: boolean;
+  /** False for scopes this sandbox does not model, such as service groups. */
+  assignableInSandbox: boolean;
+}
+
+/**
+ * Present so evaluation can run. Users cannot create these.
+ * See docs/RBAC.md section 6.
+ */
+export interface DenyAssignment {
+  id: string;
+  name: string;
+  scope: string;
+  doNotApplyToChildScopes: boolean;
+  appliesToAllPrincipals: boolean;
+  principals: string[];
+  excludePrincipals: string[];
+  actions: string[];
+  notActions: string[];
+  dataActions: string[];
+  notDataActions: string[];
+}
+
 export interface RoleAssignment {
   id: string;
   name: string;
@@ -87,6 +145,10 @@ export interface RoleAssignment {
   principalType: "User" | "Group" | "ServicePrincipal";
   roleDefinitionId: string;
   scope: string;
+  condition?: string;
+  description?: string;
+  /** World clock at creation. Rules do not call Date.now(). */
+  createdOn: number;
 }
 
 export interface ManagementLock {
@@ -116,6 +178,9 @@ export interface World {
   resourceGroups: Record<string, ResourceGroup>;
   resources: Record<string, Resource>;
   roleAssignments: Record<string, RoleAssignment>;
+  /** Custom roles only. Built-in roles stay in the imported dataset. */
+  roleDefinitions: Record<string, RoleDefinition>;
+  denyAssignments: Record<string, DenyAssignment>;
   locks: Record<string, ManagementLock>;
   policyAssignments: Record<string, never>;
   providerRegistrations: Record<string, Record<string, RegistrationState>>;

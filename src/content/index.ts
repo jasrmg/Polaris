@@ -27,7 +27,14 @@ import { serviceEndpoint } from "./resources/service-endpoint";
 import { storageAccount } from "./resources/storage-account";
 import { subscription } from "./resources/subscription";
 import { subnet } from "./resources/subnet";
+import { customRole } from "./resources/custom-role";
+import { group } from "./resources/group";
+import { managedIdentity } from "./resources/managed-identity";
+import { roleAssignment } from "./resources/role-assignment";
+import { roleDefinition } from "./resources/role-definition";
+import { servicePrincipal } from "./resources/service-principal";
 import { tenant } from "./resources/tenant";
+import { user } from "./resources/user";
 import { virtualMachine } from "./resources/virtual-machine";
 import { virtualNetwork } from "./resources/virtual-network";
 import { vnetPeering } from "./resources/vnet-peering";
@@ -40,6 +47,13 @@ import {
 
 const rawResources: ResourceInput[] = [
   tenant,
+  user,
+  group,
+  servicePrincipal,
+  managedIdentity,
+  roleDefinition,
+  roleAssignment,
+  customRole,
   managementGroup,
   subscription,
   resourceGroup,
