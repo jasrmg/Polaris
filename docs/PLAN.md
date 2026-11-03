@@ -6,16 +6,16 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 ## 0. Start here (handoff summary)
 
-**Last updated:** 2026-10-30. Checkpoints 1-12 are committed (engine core `bd45c75`, schema and hierarchy entries `27c7a12`). Checkpoint 13 (directory and RBAC) is in the working tree and not committed yet.
+**Last updated:** 2026-11-03. Checkpoints 1-13 are committed (engine core `bd45c75`, directory and RBAC `76c3395`). Checkpoint 14 (tags, locks, and Policy) is in the working tree and not committed yet.
 
 **What we are building.** Polaris is a free, browser-only place to learn and try out Azure. It has two parts:
 
-1. **Atlas (built, 39 entries):** a catalog of Azure resources. Each has a plain-English definition, an analogy, when to use it, prerequisites, examples (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
-2. **Sandbox (engine and RBAC built, not wired to the page):** create and configure those resources in a simulated tenant, including RBAC, with a simulated Cloud Shell that runs `az` commands against the in-browser world. The engine can create, update and delete the current catalog types, evaluates Azure RBAC, and stores the world in `localStorage`. Try it is still disabled. Policy is not evaluated yet. **Nothing is ever hosted and nothing ever talks to real Azure.** The goal is to get "the feel" of Azure for free.
+1. **Atlas (built, 43 entries):** a catalog of Azure resources. Each has a plain-English definition, an analogy, when to use it, prerequisites, examples (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
+2. **Sandbox (engine, RBAC, and Policy built, not wired to the page):** create and configure those resources in a simulated tenant, including RBAC and deny/audit policy, with a simulated Cloud Shell that runs `az` commands against the in-browser world. The engine can create, update and delete the current catalog types, evaluates Azure RBAC and five built-in policies, and stores the world in `localStorage`. Try it is still disabled. **Nothing is ever hosted and nothing ever talks to real Azure.** The goal is to get "the feel" of Azure for free.
 
 **Who it is for.** The owner is studying for AZ-104 and then AZ-400, but the product is **not exam-specific**. Exams are tags and study aids. Scope is "as many Azure resources and services as possible", RBAC included. **Polaris is meant to become multi-cloud, but version 1 contains only Azure.** As the owner studies other cloud providers (AWS first, then possibly GCP or others) they will be added, only after Azure v1 ships and Azure is covered (section 10). Design choices made now should not block that: keep Azure-specific details (hierarchy levels, example formats, regions, rule packs) separable from the generic engine and content shape.
 
-**Where we are.** Checkpoints 1-12 are done and committed. Checkpoint 13 adds the RBAC evaluator, the built-in role dataset, directory operations, and seven catalog entries (User, Group, Service principal, Managed identity, Role definition, Role assignment, Custom role). The catalog still does not call the engine. The next step is **checkpoint 14: tags and Policy** (section 6).
+**Where we are.** Checkpoints 1-13 are done and committed. Checkpoint 14 adds deny and audit evaluation for five built-in policies, tag-name checks, and catalog entries for Tag, Resource lock, Policy definition, and Policy assignment. The catalog still does not call the engine. The next step is **checkpoint 15: Try it** (section 6).
 
 **Decisions already made by the owner (2026-10-27, details in section 14):** the Cloud Shell runs ARM JSON only in v1 (Bicep is compiled to ARM at build time); the sandbox has switchable identities ("act as"); one tenant with a default subscription and the ability to add subscriptions and management groups; built-in roles ship only if Learn documents them, with permissions taken from the owner's own `az role definition list` export.
 
@@ -68,7 +68,7 @@ Why the scope grew (history, newest first): on 2026-10-25 the owner decided the 
 | Cloud | Azure first and fully. AWS next (and maybe GCP) only after Azure v1 and coverage gates (section 10). |
 | Exams | Tags and study aids, not the boundary. AZ-104 first, then AZ-400 (section 11). Source of truth per exam is the official skills-measured list, re-fetched before planning each exam. |
 | RBAC | **In scope** (sandbox directory, roles, assignments, what-if). Built-in roles are imported as data (section 12). |
-| Governance (Policy, locks, tags, budgets) | **In scope**, because they decide whether an action succeeds. Lock checks run in the engine (checkpoint 12). Policy, budgets, and the lock and tag catalog entries stay in checkpoint 14. |
+| Governance (Policy, locks, tags, budgets) | **In scope**, because they decide whether an action succeeds. Locks run in the engine (checkpoint 12). Deny and audit policy, plus the tag, lock, and policy catalog entries, landed in checkpoint 14. Budgets stay in the backlog under Cost Management. |
 | Application Gateway | Not in the catalog yet. In the backlog (it was excluded only because it is not an AZ-104 skills heading). |
 | Subscription, Resource Group, Management group, Tenant | Container entries, not ordinary resources. Resource Group exists. The others arrive in checkpoint 11. |
 | Networking | The largest group so far. |
@@ -123,12 +123,12 @@ Batching tip: verification of several entries can be split across read-only suba
 - Lucide icon names used in content (`icon: "..."`) must be added to `src/components/resource-icon.tsx`. `npx tsc --noEmit` fails if a name does not exist in lucide.
 - Long unbroken words (for example `Microsoft.Compute/virtualMachineScaleSets/virtualMachines`) once stretched the detail page on phones. Text spans in `resource-detail.tsx` use `min-w-0 [overflow-wrap:anywhere]`. Keep that when adding new text blocks.
 
-## 5. Current catalog (39 entries)
+## 5. Current catalog (43 entries)
 
 | Category | Entries |
 |---|---|
 | Identity & access (8) | Tenant, User, Group, Service principal, Managed identity (directory objects, tier 3). Role definition, Role assignment, Custom role (tier 3). |
-| Management & governance (3) | Management group, Subscription (both tier 3), Resource Group (tier 1) |
+| Management & governance (7) | Management group, Subscription (both tier 3), Resource Group (tier 1), Tag, Resource lock, Policy definition, Policy assignment (tier 3) |
 | Compute (4) | Virtual Machine, Virtual Machine Scale Set, App Service Plan, App Service (Web App). All tier 2. |
 | Containers (2) | Container Instances, Container Apps. Both tier 2. |
 | Storage (3) | Storage Account, Blob Container, Azure Files Share. All tier 2. |
@@ -146,7 +146,7 @@ Reordered 2026-10-25. Each checkpoint ends with the checks in section 3 and a co
 
 ### Done
 
-Checkpoints 1-13 (see the status log in section 9). Checkpoint 13 is not committed yet.
+Checkpoints 1-13 (see the status log in section 9). Checkpoint 14 is in the working tree and not committed yet.
 
 ### Finished in checkpoints 10, 11 and 12
 
@@ -164,19 +164,20 @@ Checkpoints 1-13 (see the status log in section 9). Checkpoint 13 is not committ
 - Pure TypeScript engine, no React, in `src/engine/core/` and `src/engine/azure/`. The UI does not import it, and Try it stays disabled.
 - World: one tenant, root management group "Tenant root group", one subscription, user "You" (Owner and Global Administrator). Create, update and delete for management groups, subscriptions, resource groups and the current catalog types. Name and CIDR checks, parent and region rules, VM start / stop / deallocate, provider registration, subscription states, and CanNotDelete / ReadOnly locks.
 - `localStorage` envelope (`polaris-world`, schema version 1) with reset, import and export. Rules do not call `Date.now()`; the caller passes `savedAt`.
-- Authorize and policy steps are traces that always pass. RBAC evaluation is checkpoint 13. Policy is checkpoint 14. Reachability (N1-N17) is checkpoint 16.
+- Authorize and policy were traces that always passed in this checkpoint. RBAC landed in checkpoint 13. Deny and audit policy landed in checkpoint 14. Reachability (N1-N17) is checkpoint 16.
 - Tests use Node's built-in runner (`npm test`, via `tsx`). Vitest was not added. `npm install` failed with a certificate error in this environment.
 
-**Checkpoint 13 - Directory and RBAC** *(done in the working tree, 2026-10-30, not committed)*
+**Checkpoint 13 - Directory and RBAC** *(done, 2026-10-30, `76c3395`)*
 - `scripts/import-roles.ts` writes `src/engine/azure/data/built-in-roles.json` (as of 2026-10-30): 505 roles Learn lists, 499 from the API export, 6 from Learn. 471 undocumented roles are left out. The export's subscription ID is stripped. Monitored Objects Contributor is listed, but Learn does not publish its actions, so the evaluator does not treat it as a grant.
 - Directory operations, role assignments, custom roles, elevate access, and "act as". The evaluator returns allowed, denied, or conditional (not evaluated).
 - Catalog entries for Role definition, Role assignment, Custom role, Managed identity, Service principal, User and Group. No what-if page yet. The operation catalogue from the permissions pages is not imported yet.
 
-### Next
+**Checkpoint 14 - Governance that changes outcomes** *(done in the working tree, 2026-11-03, not committed)*
+- Research in `docs/research/policy-model.md`. Deny and audit (plus disabled and DoNotEnforce) for five built-in policies. A deny returns `RequestDisallowedByPolicy`. Audit records a non-compliant row and allows the write.
+- Tag name checks that Learn states and the engine did not yet enforce (forbidden characters, storage 128, DNS 15). Locks were already enforced. Catalog entries for Tag, Resource lock, Policy definition, and Policy assignment.
+- Append, modify, initiatives, exemptions, and custom policy rules are not simulated.
 
-**Checkpoint 14 - Governance that changes outcomes**
-- Tags and Azure Policy (assignments with deny and audit effects, built-in definitions as data). CanNotDelete and ReadOnly locks are already enforced by the engine; this checkpoint adds the catalog entries. These matter to the sandbox because they decide whether an action succeeds.
-- Catalog entries for each.
+### Next
 
 **Checkpoint 15 - Create pages ("Try it")**
 - A create form per tier 1 and tier 2 entry, following the Learn portal labels, with validation messages that explain why. Build the generator script here (`Azure/bicep-types-az` at a pinned commit, pruned per type, plus the hand-written overlay; `docs/SIMULATOR.md` section 11).
@@ -235,7 +236,7 @@ These were starting points, not verified facts.
 - Tenant, Management group and Subscription get container entries in checkpoint 11. Open: how much detail the Tenant and Management group entries need, since they have no create flow outside the directory.
 - Hosting target for deploy: Azure Static Web Apps (on-theme) or Vercel (simplest)? Decide at checkpoint 20.
 - Section 11 "Proposed model" (`kind`, `exams`, service-area categories) was refined in `docs/SIMULATOR.md` section 9 (four kinds including `directory-object`, new category ids). **Still waiting for the owner's confirmation** (section 14, "To confirm").
-- Research left several items unverified or open; each design doc ends with its own "Not verified and open" list. The main ones: the order ARM runs checks in, wildcard grammar, root scope `/` versus the root management group, why 34 of 499 shared roles differ between Learn and the API, ABAC condition grammar, Policy (not yet researched), the content licence of generated Learn pages.
+- Research left several items unverified or open; each design doc ends with its own "Not verified and open" list. The main ones: the order ARM runs checks in, wildcard grammar, root scope `/` versus the root management group, why 34 of 499 shared roles differ between Learn and the API, ABAC condition grammar, policy effects other than deny and audit, the content licence of generated Learn pages.
 - `az network private-endpoint dns-zone-group create --zone-name`: Learn describes it as the DNS zone name, but its own examples use a label. The content treats it as a label and says so. Re-check when the CLI reference is updated.
 - Bicep API versions in examples (for example `2023-09-01`) compile fine, but Learn lists newer ones. Decide whether to bump them in one sweep.
 - Peering "Allow forwarded traffic": Learn describes which side carries it inconsistently, so the content is deliberately non-directional.
@@ -256,8 +257,9 @@ These were starting points, not verified facts.
 | 10 | Design the sandbox (documents only): three design docs plus six research reports | Done | `4f8e0f5` |
 | 11 | Schema migration, filters, dependency tab, Tenant, Management group, Subscription | Done | `27c7a12` |
 | 12 | Engine core (world, hierarchy, create/update/delete, names, CIDR, VM power, locks). No UI. | Done | `bd45c75` |
-| 13 | Directory, RBAC evaluator, built-in roles, seven catalog entries. No Try it page. | Done, not committed | |
-| 14-20 | See roadmap in section 6 | Not started | |
+| 13 | Directory, RBAC evaluator, built-in roles, seven catalog entries. No Try it page. | Done | `76c3395` |
+| 14 | Tags, locks, and deny/audit Policy, plus four catalog entries. No Try it page. | Done, not committed | |
+| 15-20 | See roadmap in section 6 | Not started | |
 
 Docs-only commits: `71121bf` (first plan), `0c9ad5d` (roadmap reorder), `c0458c1` (plan refresh, real README, agent notes, backlog).
 
@@ -436,4 +438,4 @@ Decided 2026-10-25. Built in checkpoints 17 and 18. **Designed in checkpoint 10:
 
 ### Not decided yet
 
-Policy model (needs its own research before checkpoint 14); PowerShell shell flavour (after v2); where the long tail of Azure stops; hosting target (checkpoint 20); whether to include in-browser Bicep after v1.
+PowerShell shell flavour (after v2); where the long tail of Azure stops; hosting target (checkpoint 20); whether to include in-browser Bicep after v1. Policy deny and audit for five built-ins is decided in `docs/research/policy-model.md`. Append, modify, initiatives, and exemptions stay out until a later checkpoint.

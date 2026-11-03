@@ -21,7 +21,11 @@ import { networkVirtualAppliance } from "./resources/network-virtual-appliance";
 import { privateDnsZone } from "./resources/private-dns-zone";
 import { privateEndpoint } from "./resources/private-endpoint";
 import { publicIpAddress } from "./resources/public-ip-address";
+import { lock } from "./resources/lock";
+import { policyAssignment } from "./resources/policy-assignment";
+import { policyDefinition } from "./resources/policy-definition";
 import { resourceGroup } from "./resources/resource-group";
+import { tag } from "./resources/tag";
 import { routeTable } from "./resources/route-table";
 import { serviceEndpoint } from "./resources/service-endpoint";
 import { storageAccount } from "./resources/storage-account";
@@ -57,6 +61,10 @@ const rawResources: ResourceInput[] = [
   managementGroup,
   subscription,
   resourceGroup,
+  tag,
+  lock,
+  policyDefinition,
+  policyAssignment,
   virtualMachine,
   virtualMachineScaleSet,
   appServicePlan,

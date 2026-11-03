@@ -1,0 +1,132 @@
+{
+  "asOf": "2026-11-03",
+  "source": "https://github.com/Azure/azure-policy/tree/master/built-in-policies/policyDefinitions",
+  "definitions": [
+    {
+      "id": "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c",
+      "name": "e56962a6-4747-49cd-b67b-bf8b01975c4c",
+      "properties": {
+        "displayName": "Allowed locations",
+        "policyType": "BuiltIn",
+        "mode": "Indexed",
+        "description": "This policy enables you to restrict the locations your organization can specify when deploying resources. Use to enforce your geo-compliance requirements. Excludes resource groups, Microsoft.AzureActiveDirectory/b2cDirectories, and resources that use the 'global' region.",
+        "metadata": { "version": "1.1.0", "category": "General" },
+        "version": "1.1.0",
+        "parameters": {
+          "listOfAllowedLocations": {
+            "type": "Array",
+            "metadata": {
+              "description": "The list of locations that can be specified when deploying resources.",
+              "displayName": "Allowed locations"
+            }
+          },
+          "effect": {
+            "type": "String",
+            "defaultValue": "Deny",
+            "allowedValues": ["Audit", "Deny", "Disabled"],
+            "metadata": { "displayName": "Effect", "description": "Enable or disable the execution of the policy" }
+          }
+        },
+        "policyRule": { "then": { "effect": "[parameters('effect')]" } }
+      }
+    },
+    {
+      "id": "/providers/Microsoft.Authorization/policyDefinitions/a08ec900-254a-4555-9bf5-e42af04b5c5c",
+      "name": "a08ec900-254a-4555-9bf5-e42af04b5c5c",
+      "properties": {
+        "displayName": "Allowed resource types",
+        "policyType": "BuiltIn",
+        "mode": "Indexed",
+        "description": "This policy enables you to specify the resource types that your organization can deploy. Only resource types that support 'tags' and 'location' will be affected by this policy. To restrict all resources please duplicate this policy and change the 'mode' to 'All'.",
+        "metadata": { "version": "1.1.0", "category": "General" },
+        "version": "1.1.0",
+        "parameters": {
+          "listOfResourceTypesAllowed": {
+            "type": "Array",
+            "metadata": {
+              "description": "The list of resource types that can be deployed.",
+              "displayName": "Allowed resource types"
+            }
+          },
+          "effect": {
+            "type": "String",
+            "defaultValue": "Deny",
+            "allowedValues": ["Audit", "Deny", "Disabled"],
+            "metadata": { "displayName": "Effect", "description": "Enable or disable the execution of the policy" }
+          }
+        },
+        "policyRule": { "then": { "effect": "[parameters('effect')]" } }
+      }
+    },
+    {
+      "id": "/providers/Microsoft.Authorization/policyDefinitions/6c112d4e-5bc7-47ae-a041-ea2d9dccd749",
+      "name": "6c112d4e-5bc7-47ae-a041-ea2d9dccd749",
+      "properties": {
+        "displayName": "Not allowed resource types",
+        "policyType": "BuiltIn",
+        "mode": "All",
+        "description": "Restrict which resource types can be deployed in your environment. Limiting resource types can reduce the complexity and attack surface of your environment while also helping to manage costs. Compliance results are only shown for non-compliant resources.",
+        "metadata": { "version": "2.0.0", "category": "General" },
+        "version": "2.0.0",
+        "parameters": {
+          "listOfResourceTypesNotAllowed": {
+            "type": "Array",
+            "metadata": {
+              "description": "The list of resource types that cannot be deployed.",
+              "displayName": "Not allowed resource types"
+            }
+          },
+          "effect": {
+            "type": "String",
+            "defaultValue": "Deny",
+            "allowedValues": ["Audit", "Deny", "Disabled"],
+            "metadata": { "displayName": "Effect", "description": "Enable or disable the execution of the policy" }
+          }
+        },
+        "policyRule": { "then": { "effect": "[parameters('effect')]" } }
+      }
+    },
+    {
+      "id": "/providers/Microsoft.Authorization/policyDefinitions/1e30110a-5ceb-460c-a204-c1c3969c6d62",
+      "name": "1e30110a-5ceb-460c-a204-c1c3969c6d62",
+      "properties": {
+        "displayName": "Require a tag and its value on resources",
+        "policyType": "BuiltIn",
+        "mode": "Indexed",
+        "description": "Enforces a required tag and its value. Does not apply to resource groups.",
+        "metadata": { "version": "1.0.1", "category": "Tags" },
+        "version": "1.0.1",
+        "parameters": {
+          "tagName": {
+            "type": "String",
+            "metadata": { "displayName": "Tag Name", "description": "Name of the tag, such as 'environment'" }
+          },
+          "tagValue": {
+            "type": "String",
+            "metadata": { "displayName": "Tag Value", "description": "Value of the tag, such as 'production'" }
+          }
+        },
+        "policyRule": { "then": { "effect": "deny" } }
+      }
+    },
+    {
+      "id": "/providers/Microsoft.Authorization/policyDefinitions/871b6d14-10aa-478d-b590-94f262ecfa99",
+      "name": "871b6d14-10aa-478d-b590-94f262ecfa99",
+      "properties": {
+        "displayName": "Require a tag on resources",
+        "policyType": "BuiltIn",
+        "mode": "Indexed",
+        "description": "Enforces existence of a tag. Does not apply to resource groups.",
+        "metadata": { "version": "1.0.1", "category": "Tags" },
+        "version": "1.0.1",
+        "parameters": {
+          "tagName": {
+            "type": "String",
+            "metadata": { "displayName": "Tag Name", "description": "Name of the tag, such as 'environment'" }
+          }
+        },
+        "policyRule": { "then": { "effect": "deny" } }
+      }
+    }
+  ]
+}

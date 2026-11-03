@@ -4,12 +4,11 @@ Seed list created 2026-10-27. This is a to-do list of **names only**. Nothing he
 
 How to use it: each catalog batch (about five entries, always after checkpoint 11 so they use the new schema) takes items from the top. Every entry follows the verification routine in `docs/PLAN.md` section 3. When an entry ships, delete it from this file and add it to the catalog table in `docs/PLAN.md` section 5.
 
-Current catalog (32): Tenant, Management group, Subscription, Resource Group, Virtual Machine, VM Scale Set, App Service Plan, App Service, Container Instances, Container Apps, Storage Account, Blob Container, Azure Files Share, Log Analytics Workspace, Alert Rule, Action Group, Network Watcher, Recovery Services Vault, Virtual Network, Subnet, Public IP, NSG, ASG, Route Table, VNet Peering, NVA, Azure DNS Zone, Private DNS Zone, Load Balancer, Bastion, Service Endpoint, Private Endpoint.
+Current catalog: see `docs/PLAN.md` section 5. This file only lists what is not shipped yet.
 
 ## Priority 1: planned checkpoints (see `docs/PLAN.md` section 6)
 
-- Role definition, Role assignment, Custom role, Managed identity, Service principal, User, Group (checkpoint 13)
-- Tags, Resource locks, Azure Policy (checkpoint 14; Policy needs its own research report first, see `docs/SIMULATOR.md` section 5)
+- Budgets (Cost Management). Tags, resource locks, and deny/audit Policy shipped in checkpoint 14. Append, modify, initiatives, and exemptions are not simulated.
 
 ## Priority 2: likely on AZ-104 or AZ-400 (confirm against the live lists)
 

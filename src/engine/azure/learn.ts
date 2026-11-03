@@ -45,4 +45,11 @@ export const LEARN = {
   authorizationFailed: "https://learn.microsoft.com/en-us/azure/role-based-access-control/troubleshooting",
   denyAssignments: "https://learn.microsoft.com/en-us/azure/role-based-access-control/deny-assignments",
   entraRoles: "https://learn.microsoft.com/en-us/azure/role-based-access-control/rbac-and-directory-admin-roles",
+  tags: "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources",
+  policyOverview: "https://learn.microsoft.com/en-us/azure/governance/policy/overview",
+  policyDeny: "https://learn.microsoft.com/en-us/azure/governance/policy/concepts/effect-deny",
+  policyAudit: "https://learn.microsoft.com/en-us/azure/governance/policy/concepts/effect-audit",
+  policyEffects: "https://learn.microsoft.com/en-us/azure/governance/policy/concepts/effect-basics",
+  policyAssignment: "https://learn.microsoft.com/en-us/azure/governance/policy/concepts/assignment-structure",
+  policyDisallowed: "https://learn.microsoft.com/en-us/azure/azure-resource-manager/troubleshooting/error-policy-requestdisallowedbypolicy",
 } as const;

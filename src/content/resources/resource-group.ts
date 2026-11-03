@@ -103,7 +103,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
     },
   ],
 
-  related: ["virtual-machine", "storage-account", "virtual-network"],
+  related: ["virtual-machine", "storage-account", "virtual-network", "tag", "lock", "policy-assignment"],
   docsUrl:
     "https://learn.microsoft.com/azure/azure-resource-manager/management/manage-resource-groups-portal",
 

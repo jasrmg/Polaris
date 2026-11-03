@@ -77,6 +77,7 @@ export function starterWorld(): World {
     denyAssignments: {},
     locks: {},
     policyAssignments: {},
+    policyStates: {},
     providerRegistrations: {},
     deployments: {},
     session: {

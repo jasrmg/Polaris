@@ -26,9 +26,11 @@ export {
   getResource,
   putLock,
   registerProvider,
+  assignPolicy,
   assignRole,
   createCustomRole,
   deleteCustomRole,
+  deletePolicyAssignment,
   deleteRoleAssignment,
   setPower,
   setSubscriptionState,
@@ -47,6 +49,8 @@ export {
   setActingPrincipal,
 } from "./rbac/directory";
 export { evaluateAccess, findRole } from "./rbac/evaluate";
+export { findBuiltInPolicy } from "./policy/dataset";
+export { evaluatePolicy } from "./policy/evaluate";
 export { builtInRoleFile, findBuiltInRole } from "./rbac/dataset";
 export { acceptCurrentSchema, createLocalStorageStore, createMemoryStore, importEnvelope, POLARIS_WORLD_KEY };
 export type { World, Resource, PowerState, SubscriptionState } from "./types";

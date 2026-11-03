@@ -63,24 +63,57 @@ export function validateLocation(armType: string, location: string): EngineError
   return null;
 }
 
-export function validateTags(tags: Record<string, string> | undefined): EngineError | null {
+const TAG_NAME_FORBIDDEN = ["<", ">", "%", "&", "\\", "?", "/"];
+
+function isDnsZone(armType: string | undefined): boolean {
+  const key = armType?.toLowerCase();
+  return key === "microsoft.network/dnszones" || key === "microsoft.network/privatednszones";
+}
+
+export function validateTags(tags: Record<string, string> | undefined, armType?: string): EngineError | null {
   if (!tags) return null;
   const keys = Object.keys(tags);
-  if (keys.length > LIMITS.tags) {
+  const tagLimit = isDnsZone(armType) ? 15 : LIMITS.tags;
+  if (keys.length > tagLimit) {
     return {
       code: "TooManyTags",
-      message: `A resource can have ${LIMITS.tags} tags. (sandbox wording)`,
+      message: isDnsZone(armType)
+        ? "Azure DNS supports 15 tags. (sandbox wording)"
+        : `A resource can have ${LIMITS.tags} tags. (sandbox wording)`,
       step: "validate",
-      learnUrl: LEARN.limits,
+      learnUrl: isDnsZone(armType) ? LEARN.tags : LEARN.limits,
     };
   }
+  const keyLimit = armType?.toLowerCase() === "microsoft.storage/storageaccounts" ? 128 : LIMITS.tagKey;
   for (const key of keys) {
-    if (key.length > LIMITS.tagKey || tags[key].length > LIMITS.tagValue) {
+    if (key.length > keyLimit || tags[key].length > LIMITS.tagValue) {
       return {
         code: "TagTooLong",
-        message: `A tag key can be ${LIMITS.tagKey} characters and a value ${LIMITS.tagValue}. (sandbox wording)`,
+        message:
+          keyLimit === 128
+            ? "A storage account tag name can be 128 characters. A tag value can be 256. (sandbox wording)"
+            : `A tag key can be ${LIMITS.tagKey} characters and a value ${LIMITS.tagValue}. (sandbox wording)`,
         step: "validate",
-        learnUrl: LEARN.limits,
+        learnUrl: keyLimit === 128 ? LEARN.tags : LEARN.limits,
+        target: key,
+      };
+    }
+    const forbidden = TAG_NAME_FORBIDDEN.find((char) => key.includes(char));
+    if (forbidden) {
+      return {
+        code: "InvalidTagName",
+        message: `A tag name cannot contain ${forbidden}. (sandbox wording)`,
+        step: "validate",
+        learnUrl: LEARN.tags,
+        target: key,
+      };
+    }
+    if (isDnsZone(armType) && (key.includes(" ") || key.includes("(") || key.includes(")") || /^[0-9]/.test(key))) {
+      return {
+        code: "InvalidTagName",
+        message: "An Azure DNS tag name cannot contain spaces or parentheses, and it cannot start with a number. (sandbox wording)",
+        step: "validate",
+        learnUrl: LEARN.tags,
         target: key,
       };
     }

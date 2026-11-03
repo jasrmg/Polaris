@@ -47,7 +47,8 @@ interface World {
   roleAssignments: Record<Id, RoleAssignment>;
   customRoles: Record<Id, RoleDefinition>;  // built-in roles are shipped data, not part of the world
   locks: Record<Id, ManagementLock>;
-  policyAssignments: Record<Id, PolicyAssignment>;  // checkpoint 14, empty before that
+  policyAssignments: Record<Id, PolicyAssignment>;  // checkpoint 14
+  policyStates: Record<Id, PolicyState>;           // non-compliant rows recorded on create, update, or assignment change
   providerRegistrations: Record<Id /* sub id */, Record<string /* namespace */, "Registered" | "NotRegistered" | "Registering">>;
   deployments: Record<Id, Deployment>;      // checkpoint 18
   session: CliSession;              // who is acting, default subscription, az defaults (CLOUDSHELL.md)
@@ -171,11 +172,11 @@ State per subscription: `Registered`, `NotRegistered`, `Registering`. **[Decisio
 
 ## 5. Governance
 
-Checkpoint 14 builds this. The world already has the slots (`locks`, `policyAssignments`, tags on every envelope).
+Checkpoint 14 built this. Evidence is [`research/policy-model.md`](research/policy-model.md) (fetched 2026-11-03).
 
-- **Tags:** 50 per resource or group, key 512 and value 256 characters; group tags are not inherited. [S2][S6]
+- **Tags:** 50 per resource, group, or subscription; key 512 and value 256 characters; a storage account key is 128; names cannot contain `< > % & \ ? /`; group tags are not inherited. Azure DNS zones are limited to 15 tags. [policy S11]
 - **Locks:** `CanNotDelete` and `ReadOnly`, on a subscription, group or resource; inherited; most restrictive wins; 20 per scope; lock name 1-90 characters. A lock needs `Microsoft.Authorization/locks/*` permission (`RBAC.md`). [S6][S7][S46]
-- **Policy:** assignments with `deny` and `audit` effects against a small shipped set of built-in definitions. The research for it has not been done yet (`docs/BACKLOG.md` and a `research/policy-model.md` come with checkpoint 14). Nothing about Policy is claimed here.
+- **Policy:** assignments with `deny` and `audit` (and `disabled`) against five built-in definitions: Allowed locations, Allowed resource types, Not allowed resource types, Require a tag and its value on resources, and Require a tag on resources. `DoNotEnforce` records non-compliance and does not block. A deny with enforcement on returns `RequestDisallowedByPolicy`. Append, modify, initiatives, exemptions, and custom rule text are not simulated. [policy S1-S10, S14]
 
 ## 6. Networking behaviour (tier 1)
 
@@ -218,13 +219,14 @@ Current catalog (29 entries) proposal: tier 1 = virtual network, subnet, network
 ```
 src/engine/core/        generic: world store, result and trace types, serialise. No Azure concepts.
 src/engine/azure/       Azure pack: hierarchy, ARM ids, naming, CIDR, subscription states, provider registration, locks, VM power
-src/engine/azure/data/  built-in roles (checkpoint 13). Operation catalogue and generated resource schemas are later.
+src/engine/azure/data/  built-in roles (checkpoint 13) and five built-in policies (checkpoint 14). Operation catalogue and generated resource schemas are later.
 src/engine/azure/rbac/  evaluator, directory operations, built-in role lookup (checkpoint 13)
+src/engine/azure/policy/ deny and audit evaluation for the shipped definitions (checkpoint 14)
 src/cli/                later: tokenizer, shell interpreter, az parser, registry, output formatters (CLOUDSHELL.md)
 src/content/            catalog entries (unchanged location until the multi-cloud refactor)
 ```
 
-Checkpoint 12 built `core` and the Azure pack. Checkpoint 13 added `data/` and `rbac/`. Authorize calls the evaluator. Policy is still a trace that always passes until checkpoint 14. `cli/` is not created yet.
+Checkpoint 12 built `core` and the Azure pack. Checkpoint 13 added `data/` and `rbac/`. Checkpoint 14 evaluates deny and audit on resource and resource group writes. `cli/` is not created yet.
 
 Dependency rule: `core` imports nothing from `azure`; `cli` and the UI import the engine, never the other way round. A lint rule (`no-restricted-imports`) enforces it. The UI does not import the engine yet.
 
@@ -353,6 +355,6 @@ Version 1 contains only Azure. The design keeps these separable so adding AWS (a
 2. No documented creation time for most resources; the timer is a UX choice.
 3. Subscription state transitions are undocumented; the user sets the state.
 4. Display strings for VM stopped and deallocated; resource group `provisioningState` values; per-service availability-zone support in the two regions; naming rows for Container Apps environments and Network Watcher (`res-model` section 8).
-5. Policy has not been researched yet.
+5. Policy deny and audit for five built-in definitions is researched (`research/policy-model.md`). Append, modify, initiatives, exemptions, and a background compliance cycle are still not simulated.
 6. Whether the content licence of generated Learn pages allows import. Not needed for this design: sources are the owner's API export and MIT repos (see `RBAC.md` section 8).
 7. The 17 networking decisions above are the assistant's defaults for owner review. Two Learn pages quoted in `net` (S47, S48) were read only as search excerpts and must be fetched in full before their claims are used in product text.

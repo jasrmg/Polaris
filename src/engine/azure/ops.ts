@@ -1,6 +1,6 @@
 /**
  * Create, update, delete, and virtual machine power operations.
- * Authorization uses the RBAC evaluator. Policy always passes until checkpoint 14.
+ * Authorization uses the RBAC evaluator. Policy evaluates deny and audit on create and update.
  */
 
 import { failure, success, type EngineError, type Result, type TraceLine } from "../core/result";
@@ -33,6 +33,15 @@ import {
   type CustomRoleInput,
 } from "./rbac/directory";
 import { authorizationMessage, evaluateAccess } from "./rbac/evaluate";
+import { preparePolicyAssignment, type PolicyAssignmentInput } from "./policy/assign";
+import {
+  evaluatePolicy,
+  forgetPolicyStates,
+  rebuildCompliance,
+  replaceResourcePolicyStates,
+  type PolicySubject,
+} from "./policy/evaluate";
+import type { PolicyState } from "./types";
 import type { HttpMethod, ManagementGroup, PowerState, Resource, ResourceGroup, SubscriptionState, World } from "./types";
 
 const CHILD_PARENT: Record<string, string> = {
@@ -67,7 +76,7 @@ function gate(
   scopeId: string,
   armType: string | null,
   run: (world: World) => { world: World } | { error: EngineError },
-  options?: { ignoreSubscriptionState?: boolean; action?: string },
+  options?: { ignoreSubscriptionState?: boolean; action?: string; policy?: PolicySubject },
 ): Result<World> {
   let trace: TraceLine[] = [{ step: "parse", ok: true }];
   const actor = findActor(world, world.session.actingPrincipalId);
@@ -136,14 +145,32 @@ function gate(
   const locked = lockConflict(current, scopeId, method);
   if (locked) return failure(trace, locked);
   trace = traceOk(trace, "locks");
-  trace = traceOk(trace, "policy", "Policy is not evaluated until checkpoint 14.");
+
+  let policyStates: PolicyState[] | null = null;
+  let policyResourceId: string | null = null;
+  if (options?.policy && (method === "PUT" || method === "PATCH")) {
+    const policy = evaluatePolicy(current, options.policy);
+    if (policy.error) return failure(trace, policy.error);
+    trace = traceOk(trace, "policy", policy.detail);
+    policyStates = policy.states;
+    policyResourceId = options.policy.id;
+  } else {
+    trace = traceOk(
+      trace,
+      "policy",
+      method === "PUT" || method === "PATCH"
+        ? "This request is not a resource or resource group write."
+        : "Policy evaluates create and update requests.",
+    );
+  }
 
   const applied = run(current);
   if ("error" in applied) return failure(trace, applied.error);
   trace = traceOk(trace, "validate");
   trace = traceOk(trace, "apply");
   trace = traceOk(trace, "lifecycle");
-  return success(trace, applied.world);
+  const written = policyResourceId ? replaceResourcePolicyStates(applied.world, policyResourceId, policyStates ?? []) : applied.world;
+  return success(trace, written);
 }
 
 function mgDepth(world: World, id: string): number {
@@ -340,7 +367,7 @@ export function createResourceGroup(
     if (nameError) return { error: nameError };
     const locationError = validateLocation("Microsoft.Resources/resourceGroups", input.location);
     if (locationError) return { error: locationError };
-    const tagsError = validateTags(input.tags);
+    const tagsError = validateTags(input.tags, "Microsoft.Resources/resourceGroups");
     if (tagsError) return { error: tagsError };
     const sub = findSubscription(current, subGuid);
     if (!sub) return { error: missing("Subscription", subGuid, LEARN.subscriptionGet) };
@@ -377,6 +404,15 @@ export function createResourceGroup(
     };
     next.resourceGroups[canonicalId(id)] = group;
     return { world: next };
+  }, {
+    policy: {
+      id,
+      name: input.name,
+      type: "Microsoft.Resources/subscriptions/resourceGroups",
+      location: input.location.toLowerCase(),
+      tags: input.tags ?? {},
+      kind: "resourceGroup",
+    },
   });
 }
 
@@ -385,6 +421,7 @@ export function updateResourceGroup(
   id: string,
   input: { location?: string; tags?: Record<string, string> },
 ): Result<World> {
+  const existingGroup = world.resourceGroups[canonicalId(id)];
   return gate(world, "PATCH", id, null, (current) => {
     const group = current.resourceGroups[canonicalId(id)];
     if (!group) return { error: missing("Resource group", id, LEARN.rgGet) };
@@ -399,12 +436,24 @@ export function updateResourceGroup(
         },
       };
     }
-    const tagsError = validateTags(input.tags);
+    const tagsError = validateTags(input.tags, group.type);
     if (tagsError) return { error: tagsError };
     const next = cloneWorld(current);
     next.resourceGroups[canonicalId(group.id)] = { ...group, tags: input.tags ?? group.tags };
     return { world: next };
-  }, { action: "Microsoft.Resources/subscriptions/resourceGroups/write" });
+  }, {
+    action: "Microsoft.Resources/subscriptions/resourceGroups/write",
+    policy: existingGroup
+      ? {
+          id: existingGroup.id,
+          name: existingGroup.name,
+          type: "Microsoft.Resources/subscriptions/resourceGroups",
+          location: existingGroup.location,
+          tags: input.tags ?? existingGroup.tags,
+          kind: "resourceGroup",
+        }
+      : undefined,
+  });
 }
 
 export interface CreateResourceInput {
@@ -427,8 +476,10 @@ export function createResource(world: World, input: CreateResourceInput, options
   const typeKey = input.armType.toLowerCase();
   const names = input.parentName ? [input.parentName, input.name] : [input.name];
   let id = "";
+  let resolved = false;
   try {
     id = resourceId(subGuid, input.resourceGroup, input.armType, names);
+    resolved = true;
   } catch {
     id = resourceGroupId(subGuid, input.resourceGroup);
   }
@@ -451,7 +502,7 @@ export function createResource(world: World, input: CreateResourceInput, options
     const location = (input.location ?? (requiresGlobal(typeKey) ? "global" : current.session.defaults.location ?? "southeastasia"));
     const locationError = validateLocation(input.armType, location);
     if (locationError) return { error: locationError };
-    const tagsError = validateTags(input.tags);
+    const tagsError = validateTags(input.tags, input.armType);
     if (tagsError) return { error: tagsError };
 
     const parentType = CHILD_PARENT[typeKey];
@@ -564,6 +615,19 @@ export function createResource(world: World, input: CreateResourceInput, options
       }
     }
     return { world: next };
+  }, {
+    policy: resolved
+      ? {
+          id,
+          name: input.name,
+          type: input.armType,
+          location: (
+            input.location ?? (requiresGlobal(typeKey) ? "global" : world.session.defaults.location ?? "southeastasia")
+          ).toLowerCase(),
+          tags: input.tags ?? {},
+          kind: "resource",
+        }
+      : undefined,
   });
 }
 
@@ -573,6 +637,7 @@ export function updateResource(
   input: { tags?: Record<string, string>; properties?: Record<string, unknown>; location?: string },
 ): Result<World> {
   const armType = parseId(id)?.armType;
+  const existingResource = world.resources[canonicalId(id)];
   return gate(world, "PATCH", id, armType ?? null, (current) => {
     const existing = current.resources[canonicalId(id)];
     if (!existing) return { error: missing("Resource", id, LEARN.armOverview) };
@@ -586,7 +651,7 @@ export function updateResource(
         },
       };
     }
-    const tagsError = validateTags(input.tags ?? existing.tags);
+    const tagsError = validateTags(input.tags ?? existing.tags, existing.type);
     if (tagsError) return { error: tagsError };
     const properties = { ...existing.properties, ...(input.properties ?? {}) };
     const typeKey = existing.type.toLowerCase();
@@ -601,6 +666,17 @@ export function updateResource(
       properties: { ...properties, provisioningState: "Succeeded" },
     };
     return { world: next };
+  }, {
+    policy: existingResource
+      ? {
+          id: existingResource.id,
+          name: existingResource.name,
+          type: existingResource.type,
+          location: existingResource.location,
+          tags: input.tags ?? existingResource.tags,
+          kind: "resource",
+        }
+      : undefined,
   });
 }
 
@@ -618,7 +694,7 @@ export function deleteResource(world: World, id: string): Result<World> {
     for (const key of Object.keys(next.resources)) {
       if (key === canonicalId(existing.id) || key.startsWith(prefix)) delete next.resources[key];
     }
-    return { world: removeOwnedIdentities(next, existing.id) };
+    return { world: forgetPolicyStates(removeOwnedIdentities(next, existing.id), [existing.id]) };
   }, { action: parseId(id)?.armType ? `${parseId(id)?.armType}/delete` : undefined });
 }
 
@@ -649,7 +725,7 @@ export function deleteResourceGroup(world: World, id: string): Result<World> {
     const next = cloneWorld(current);
     for (const key of insideIds) delete next.resources[key];
     delete next.resourceGroups[canonicalId(group.id)];
-    return { world: next };
+    return { world: forgetPolicyStates(next, [group.id, ...inside.map((resource) => resource.id)]) };
   }, { action: "Microsoft.Resources/subscriptions/resourceGroups/delete" });
 }
 
@@ -743,6 +819,39 @@ export function putLock(
     next.locks[canonicalId(id)] = { id, name: input.name, level: input.level, scope: input.scope };
     return { world: next };
   }, { action: "Microsoft.Authorization/locks/write" });
+}
+
+export function assignPolicy(world: World, input: PolicyAssignmentInput): Result<World> {
+  return gate(world, "PUT", input.scope, null, (current) => {
+    const prepared = preparePolicyAssignment(current, input);
+    if ("error" in prepared) return prepared;
+    const next = cloneWorld(current);
+    next.policyAssignments[canonicalId(prepared.assignment.id)] = prepared.assignment;
+    return { world: rebuildCompliance(next) };
+  }, { action: "Microsoft.Authorization/policyAssignments/write" });
+}
+
+export function deletePolicyAssignment(world: World, idOrName: string, scope: string): Result<World> {
+  return gate(world, "DELETE", scope, null, (current) => {
+    const key = canonicalId(idOrName);
+    const found = Object.values(current.policyAssignments).find(
+      (assignment) => canonicalId(assignment.id) === key || (assignment.name.toLowerCase() === idOrName.toLowerCase() && canonicalId(assignment.scope) === canonicalId(scope)),
+    );
+    if (!found) {
+      return {
+        error: {
+          code: "PolicyAssignmentNotFound",
+          message: `Policy assignment ${idOrName} was not found. (sandbox wording)`,
+          step: "validate",
+          learnUrl: LEARN.policyAssignment,
+          target: idOrName,
+        },
+      };
+    }
+    const next = cloneWorld(current);
+    delete next.policyAssignments[canonicalId(found.id)];
+    return { world: rebuildCompliance(next) };
+  }, { action: "Microsoft.Authorization/policyAssignments/delete" });
 }
 
 export function assignRole(world: World, input: AssignmentInput): Result<World> {

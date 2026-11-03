@@ -158,6 +158,31 @@ export interface ManagementLock {
   scope: string;
 }
 
+/** Assignment parameter values. Azure wraps each one as `{ value }`; the sandbox stores the value. */
+export type PolicyParameter = string | string[];
+
+export interface PolicyAssignment {
+  id: string;
+  name: string;
+  displayName: string;
+  description?: string;
+  scope: string;
+  policyDefinitionId: string;
+  /** Keys match the built-in definition. Effect is `Audit`, `Deny`, or `Disabled` when the definition has that parameter. */
+  parameters: Record<string, PolicyParameter>;
+  enforcementMode: "Default" | "DoNotEnforce";
+  notScopes: string[];
+}
+
+/** Recorded when a create or update is non-compliant. Deny with enforcement on never stores the resource, so it leaves no record. */
+export interface PolicyState {
+  resourceId: string;
+  assignmentId: string;
+  policyDefinitionId: string;
+  complianceState: "NonCompliant";
+  effect: "audit" | "deny";
+}
+
 export interface CliSession {
   actingPrincipalId: string;
   subscriptionId: string;
@@ -182,7 +207,9 @@ export interface World {
   roleDefinitions: Record<string, RoleDefinition>;
   denyAssignments: Record<string, DenyAssignment>;
   locks: Record<string, ManagementLock>;
-  policyAssignments: Record<string, never>;
+  policyAssignments: Record<string, PolicyAssignment>;
+  /** Keyed by resource id plus assignment id. Rebuilt when an assignment changes. */
+  policyStates: Record<string, PolicyState>;
   providerRegistrations: Record<string, Record<string, RegistrationState>>;
   deployments: Record<string, never>;
   session: CliSession;
