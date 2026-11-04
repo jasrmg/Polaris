@@ -16,6 +16,14 @@ const fieldClass = "grid gap-1 text-sm";
 const selectClass =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
+const NAME_PLACEHOLDER: Record<TrySlug, string> = {
+  "resource-group": "rg-polaris-demo",
+  "virtual-network": "vnet-sea",
+  subnet: "snet-app",
+  "virtual-machine": "vm-web-01",
+  "storage-account": "stpolarisdemo001",
+};
+
 const COPY: Record<TrySlug, { title: string; lead: string }> = {
   "resource-group": {
     title: "Create a resource group",
@@ -199,7 +207,7 @@ export function CreateView({ slug }: { slug: TrySlug }) {
             onChange={(event) => setName(event.target.value)}
             required
             autoComplete="off"
-            placeholder={slug === "storage-account" ? "stpolarisdemo001" : slug === "virtual-machine" ? "vm-web-01" : ""}
+            placeholder={NAME_PLACEHOLDER[slug]}
           />
         </label>
         {slug !== "subnet" && (

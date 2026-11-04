@@ -17,6 +17,20 @@ const CREATE_LINKS: { slug: TrySlug; label: string }[] = [
   { slug: "storage-account", label: "Storage account" },
 ];
 
+const healthyBadge = "border-transparent bg-emerald-600/15 text-emerald-800 dark:text-emerald-300";
+
+function StateBadge({ label, tone }: { label: string; tone: "healthy" | "failed" | "neutral" }) {
+  if (tone === "failed") return <Badge variant="destructive">{label}</Badge>;
+  if (tone === "healthy") return <Badge variant="outline" className={healthyBadge}>{label}</Badge>;
+  return <Badge variant="secondary">{label}</Badge>;
+}
+
+function provisioningTone(state: string): "healthy" | "failed" | "neutral" {
+  if (state === "Succeeded") return "healthy";
+  if (state === "Failed" || state === "Canceled") return "failed";
+  return "neutral";
+}
+
 function powerText(state: string): string {
   if (state === "Stopped") return "Stopped (Allocated)";
   if (state === "Deallocated") return "Stopped (Deallocated)";
@@ -111,7 +125,7 @@ export function EnvironmentView() {
                     <p className="text-xs text-muted-foreground">{group.location} · Resource group</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">{group.provisioningState}</Badge>
+                    <StateBadge label={group.provisioningState} tone={provisioningTone(group.provisioningState)} />
                     {pendingDelete === group.id ? (
                       <Button type="button" variant="destructive" size="sm" onClick={() => removeGroup(group.id)}>
                         Confirm delete
@@ -141,8 +155,8 @@ export function EnvironmentView() {
                               <p className="text-xs text-muted-foreground">{resource.location}</p>
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
-                              {provisioning && <Badge variant="secondary">{provisioning}</Badge>}
-                              {powerState && <Badge variant="outline">{powerText(powerState)}</Badge>}
+                              {provisioning && <StateBadge label={provisioning} tone={provisioningTone(provisioning)} />}
+                              {powerState && <StateBadge label={powerText(powerState)} tone={powerState === "Running" ? "healthy" : "neutral"} />}
                               {powerState === "Stopped" && (
                                 <span className="text-xs text-muted-foreground">Still billed</span>
                               )}
