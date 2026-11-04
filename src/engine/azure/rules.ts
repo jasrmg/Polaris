@@ -262,16 +262,36 @@ export function referencedIds(resource: Resource): string[] {
     ...stringsOf(props.remoteVirtualNetworkId),
   ];
   if (resource.managedBy) ids.push(resource.managedBy);
+  ids.push(...idOf(props.networkSecurityGroup));
+  const profile = props.networkProfile;
+  if (profile && typeof profile === "object") {
+    const nics = (profile as { networkInterfaces?: unknown }).networkInterfaces;
+    if (Array.isArray(nics)) {
+      for (const nic of nics) ids.push(...idOf(nic));
+    }
+  }
   const configs = props.ipConfigurations;
   if (Array.isArray(configs)) {
     for (const config of configs) {
       if (config && typeof config === "object") {
         const record = config as Record<string, unknown>;
         ids.push(...stringsOf(record.subnetId), ...stringsOf(record.publicIpAddressId));
+        const nested = record.properties;
+        if (nested && typeof nested === "object") {
+          const fields = nested as { subnet?: unknown; publicIPAddress?: unknown };
+          ids.push(...idOf(fields.subnet), ...idOf(fields.publicIPAddress));
+        }
       }
     }
   }
   return ids;
+}
+
+function idOf(value: unknown): string[] {
+  if (value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string") {
+    return [(value as { id: string }).id];
+  }
+  return [];
 }
 
 export function sameName(a: string, b: string): boolean {

@@ -16,6 +16,7 @@ import {
   providerGate,
   referencedIds,
   sameName,
+  stringsOf,
   subscriptionAllows,
   validateLocation,
   validateSubnetPrefix,
@@ -39,6 +40,7 @@ import {
   forgetPolicyStates,
   rebuildCompliance,
   replaceResourcePolicyStates,
+  subjectFromResource,
   type PolicySubject,
 } from "./policy/evaluate";
 import type { PolicyState } from "./types";
@@ -667,17 +669,234 @@ export function updateResource(
     };
     return { world: next };
   }, {
-    policy: existingResource
-      ? {
-          id: existingResource.id,
-          name: existingResource.name,
-          type: existingResource.type,
-          location: existingResource.location,
-          tags: input.tags ?? existingResource.tags,
-          kind: "resource",
-        }
-      : undefined,
+    policy: existingResource ? subjectFromResource({ ...existingResource, tags: input.tags ?? existingResource.tags }) : undefined,
   });
+}
+
+export function attachNetworkInterface(world: World, vmId: string, nicId: string): Result<World> {
+  const existing = world.resources[canonicalId(vmId)];
+  return gate(world, "PATCH", vmId, "Microsoft.Compute/virtualMachines", (current) => {
+    const vm = current.resources[canonicalId(vmId)];
+    const nic = current.resources[canonicalId(nicId)];
+    if (!vm || !isType(vm, "microsoft.compute/virtualmachines")) return { error: missing("virtual machine", vmId, LEARN.armOverview) };
+    if (!nic || !isType(nic, "microsoft.network/networkinterfaces")) return { error: missing("network interface", nicId, LEARN.nic) };
+    if (differentPlace(vm, nic)) {
+      return {
+        error: {
+          code: "NicRegionMismatch",
+          message: "A network interface is recorded in the same subscription and region as the virtual machine. (sandbox wording)",
+          step: "validate",
+          learnUrl: LEARN.nic,
+        },
+      };
+    }
+    const taken = Object.values(current.resources).find(
+      (other) =>
+        isType(other, "microsoft.compute/virtualmachines") &&
+        canonicalId(other.id) !== canonicalId(vm.id) &&
+        linkedIds(other, "nicIds").includes(canonicalId(nic.id)),
+    );
+    if (taken) {
+      return {
+        error: {
+          code: "NicInUse",
+          message: `Network interface ${nic.name} is already attached to ${taken.name}. (sandbox wording)`,
+          step: "validate",
+          learnUrl: LEARN.nic,
+        },
+      };
+    }
+    const next = cloneWorld(current);
+    const target = next.resources[canonicalId(vm.id)];
+    target.properties = {
+      ...target.properties,
+      nicIds: [nic.id],
+      networkProfile: { networkInterfaces: [{ id: nic.id }] },
+      provisioningState: "Succeeded",
+    };
+    return { world: next };
+  }, { policy: existing ? subjectFromResource(existing) : undefined });
+}
+
+export function attachPublicIp(world: World, nicId: string, publicIpId: string): Result<World> {
+  const existing = world.resources[canonicalId(nicId)];
+  return gate(world, "PATCH", nicId, "Microsoft.Network/networkInterfaces", (current) => {
+    const nic = current.resources[canonicalId(nicId)];
+    const pip = current.resources[canonicalId(publicIpId)];
+    if (!nic || !isType(nic, "microsoft.network/networkinterfaces")) return { error: missing("network interface", nicId, LEARN.nic) };
+    if (!pip || !isType(pip, "microsoft.network/publicipaddresses")) return { error: missing("public IP address", publicIpId, LEARN.publicIp) };
+    if (differentPlace(nic, pip)) {
+      return {
+        error: {
+          code: "PublicIpRegionMismatch",
+          message: "A public IP address must be in the same region as the resource you attach it to. (sandbox wording)",
+          step: "validate",
+          learnUrl: LEARN.publicIp,
+        },
+      };
+    }
+    const taken = Object.values(current.resources).find(
+      (other) => canonicalId(other.id) !== canonicalId(nic.id) && referencedIds(other).some((ref) => canonicalId(ref) === canonicalId(pip.id)),
+    );
+    if (taken) {
+      return {
+        error: {
+          code: "PublicIpInUse",
+          message: `Public IP address ${pip.name} is already associated with ${taken.name}. (sandbox wording)`,
+          step: "validate",
+          learnUrl: LEARN.publicIp,
+        },
+      };
+    }
+    const next = cloneWorld(current);
+    const target = next.resources[canonicalId(nic.id)];
+    target.properties = withPublicIp(target.properties, pip.id);
+    return { world: next };
+  }, { policy: existing ? subjectFromResource(existing) : undefined });
+}
+
+export function addInboundRule(
+  world: World,
+  subnetId: string,
+  nsgId: string,
+  input: { port: number; access: "Allow" | "Deny"; priority: number },
+): Result<World> {
+  const existing = world.resources[canonicalId(subnetId)];
+  return gate(world, "PATCH", subnetId, "Microsoft.Network/virtualNetworks/subnets", (current) => {
+    const subnet = current.resources[canonicalId(subnetId)];
+    const nsg = current.resources[canonicalId(nsgId)];
+    if (!subnet || !isType(subnet, "microsoft.network/virtualnetworks/subnets")) return { error: missing("subnet", subnetId, LEARN.subnet) };
+    if (!nsg || !isType(nsg, "microsoft.network/networksecuritygroups")) return { error: missing("network security group", nsgId, LEARN.nsg) };
+    const actor = findActor(current, current.session.actingPrincipalId);
+    const nsgWrite = "Microsoft.Network/networkSecurityGroups/write";
+    if (actor) {
+      const decision = evaluateAccess(current, {
+        principalId: actor.id,
+        action: nsgWrite,
+        scope: nsg.id,
+        plane: "control",
+      });
+      if (decision.decision !== "allowed") {
+        return {
+          error: {
+            code: "AuthorizationFailed",
+            message: authorizationMessage(actor.displayName, actor.id, nsgWrite, nsg.id),
+            step: "authorize",
+            learnUrl: LEARN.authorizationFailed,
+          },
+        };
+      }
+    }
+    const vnet = parentVirtualNetwork(current, subnet);
+    const regionOf = vnet?.location ?? subnet.location;
+    if (nsg.subscriptionId !== subnet.subscriptionId || nsg.location.toLowerCase() !== regionOf.toLowerCase()) {
+      return {
+        error: {
+          code: "NsgRegionMismatch",
+          message: "An NSG must be in the same subscription and region as the virtual network of any subnet you associate it with. (sandbox wording)",
+          step: "validate",
+          learnUrl: LEARN.nsg,
+        },
+      };
+    }
+    const currentNsg = typeof subnet.properties.networkSecurityGroupId === "string" ? canonicalId(subnet.properties.networkSecurityGroupId) : "";
+    if (currentNsg && currentNsg !== canonicalId(nsg.id)) {
+      return {
+        error: {
+          code: "NsgAlreadyAssociated",
+          message: `Subnet ${subnet.name} is already associated with another network security group. (sandbox wording)`,
+          step: "validate",
+          learnUrl: LEARN.nsg,
+        },
+      };
+    }
+    if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) {
+      return {
+        error: {
+          code: "InvalidPort",
+          message: "Record one destination port, from 1 to 65535. (sandbox wording)",
+          step: "validate",
+          learnUrl: LEARN.nsgOverview,
+        },
+      };
+    }
+    if (!Number.isInteger(input.priority) || input.priority < 100 || input.priority > 4096) {
+      return {
+        error: {
+          code: "InvalidPriority",
+          message: "Priority is a number between 100 and 4096. (sandbox wording)",
+          step: "validate",
+          learnUrl: LEARN.nsgOverview,
+        },
+      };
+    }
+    if (input.access !== "Allow" && input.access !== "Deny") {
+      return {
+        error: {
+          code: "InvalidAccess",
+          message: "A rule allows or denies. (sandbox wording)",
+          step: "validate",
+          learnUrl: LEARN.nsgOverview,
+        },
+      };
+    }
+    const name = `${input.access}-${input.port}-Inbound-${input.priority}`;
+    const existingRules = Array.isArray(nsg.properties.securityRules) ? nsg.properties.securityRules : [];
+    const duplicate = existingRules.some((rule) => {
+      const fields = ruleFields(rule);
+      return fields?.direction.toLowerCase() === "inbound" && fields.priority === input.priority;
+    });
+    if (duplicate) {
+      return {
+        error: {
+          code: "DuplicateRulePriority",
+          message: "You can't create two rules with the same priority and direction.",
+          step: "validate",
+          learnUrl: LEARN.nsgOverview,
+        },
+      };
+    }
+    if (existingRules.some((rule) => ruleName(rule).toLowerCase() === name.toLowerCase())) {
+      return {
+        error: {
+          code: "DuplicateRuleName",
+          message: `A rule named ${name} already exists in ${nsg.name}. (sandbox wording)`,
+          step: "validate",
+          learnUrl: LEARN.nsgOverview,
+        },
+      };
+    }
+    const nsgPolicy = evaluatePolicy(current, subjectFromResource(nsg));
+    if (nsgPolicy.error) return { error: nsgPolicy.error };
+    const rule = {
+      name,
+      properties: {
+        priority: input.priority,
+        direction: "Inbound",
+        access: input.access,
+        protocol: "Tcp",
+        sourceAddressPrefix: "Internet",
+        sourcePortRange: "*",
+        destinationAddressPrefix: "*",
+        destinationPortRange: String(input.port),
+      },
+    };
+    const next = cloneWorld(current);
+    const nextSubnet = next.resources[canonicalId(subnet.id)];
+    const nextNsg = next.resources[canonicalId(nsg.id)];
+    nextSubnet.properties = {
+      ...nextSubnet.properties,
+      networkSecurityGroupId: nsg.id,
+      networkSecurityGroup: { id: nsg.id },
+      provisioningState: "Succeeded",
+    };
+    nextNsg.properties = {
+      ...nextNsg.properties,
+      securityRules: [...existingRules, rule],
+      provisioningState: "Succeeded",
+    };
+    return { world: replaceResourcePolicyStates(next, nsg.id, nsgPolicy.states) };
+  }, { policy: existing ? subjectFromResource(existing) : undefined });
 }
 
 export function deleteResource(world: World, id: string): Result<World> {
@@ -964,6 +1183,69 @@ function addressList(properties: Record<string, unknown>): string[] {
 
 function cidrErrorMessage(message: string): EngineError {
   return { code: "InvalidAddressPrefix", message, step: "validate", learnUrl: LEARN.subnet };
+}
+
+function isType(resource: Resource, typeKey: string): boolean {
+  return resource.type.toLowerCase() === typeKey;
+}
+
+function differentPlace(left: Resource, right: Resource): boolean {
+  return left.subscriptionId !== right.subscriptionId || left.location.toLowerCase() !== right.location.toLowerCase();
+}
+
+function linkedIds(resource: Resource, flatKey: string): string[] {
+  const ids = stringsOf(resource.properties[flatKey]).map((id) => canonicalId(id));
+  const profile = resource.properties.networkProfile;
+  if (profile && typeof profile === "object") {
+    const nics = (profile as { networkInterfaces?: unknown }).networkInterfaces;
+    if (Array.isArray(nics)) {
+      for (const nic of nics) {
+        if (nic && typeof nic === "object" && typeof (nic as { id?: unknown }).id === "string") {
+          ids.push(canonicalId((nic as { id: string }).id));
+        }
+      }
+    }
+  }
+  return ids;
+}
+
+function withPublicIp(properties: Record<string, unknown>, publicIpId: string): Record<string, unknown> {
+  const configs = Array.isArray(properties.ipConfigurations) ? properties.ipConfigurations : [];
+  const nextConfigs = configs.length === 0
+    ? [{ name: "ipconfig1", publicIpAddressId: publicIpId, properties: { publicIPAddress: { id: publicIpId } } }]
+    : configs.map((config, index) => {
+        if (index !== 0 || !config || typeof config !== "object") return config;
+        const record = config as Record<string, unknown>;
+        const nested = record.properties && typeof record.properties === "object" ? { ...(record.properties as Record<string, unknown>) } : {};
+        return {
+          ...record,
+          publicIpAddressId: publicIpId,
+          properties: { ...nested, publicIPAddress: { id: publicIpId } },
+        };
+      });
+  return { ...properties, publicIpAddressId: publicIpId, ipConfigurations: nextConfigs, provisioningState: "Succeeded" };
+}
+
+function parentVirtualNetwork(world: World, subnet: Resource): Resource | null {
+  const marker = "/subnets/";
+  const at = subnet.id.toLowerCase().lastIndexOf(marker);
+  if (at < 0) return null;
+  return world.resources[canonicalId(subnet.id.slice(0, at))] ?? null;
+}
+
+function ruleName(rule: unknown): string {
+  if (rule && typeof rule === "object" && typeof (rule as { name?: unknown }).name === "string") return (rule as { name: string }).name;
+  return "";
+}
+
+function ruleFields(rule: unknown): { priority: number; direction: string } | null {
+  if (!rule || typeof rule !== "object") return null;
+  const props = (rule as { properties?: unknown }).properties;
+  if (!props || typeof props !== "object") return null;
+  const priority = (props as { priority?: unknown }).priority;
+  const direction = (props as { direction?: unknown }).direction;
+  if (typeof priority !== "number" || typeof direction !== "string") return null;
+  return { priority, direction };
 }
 
 function missing(kind: string, id: string, learnUrl: string): EngineError {

@@ -5,7 +5,10 @@ import { LEARN } from "./learn";
 import { parseId, resourceId } from "./ids";
 import { validateName } from "./names";
 import {
+  addInboundRule,
   advance,
+  attachNetworkInterface,
+  attachPublicIp,
   createManagementGroup,
   createResource,
   createResourceGroup,
@@ -142,6 +145,129 @@ describe("networks", () => {
     const removed = deleteResource(world, subnetId);
     assert.equal(removed.ok, false);
     assert.ok(removed.error?.message.includes("no resources in the subnet"));
+  });
+
+  it("attaches a NIC and a public IP, records one inbound rule, and blocks those deletes", () => {
+    let world = withGroup();
+    const vnet = createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-sea",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.0.0.0/16"] } },
+    });
+    assert.equal(vnet.ok, true, vnet.error?.message);
+    world = vnet.value!;
+    const subnet = createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks/subnets",
+      name: "snet-app",
+      resourceGroup: "rg-demo",
+      parentName: "vnet-sea",
+      location: "southeastasia",
+      properties: { addressPrefix: "10.0.1.0/24" },
+    });
+    assert.equal(subnet.ok, true, subnet.error?.message);
+    world = subnet.value!;
+    const subnetId = Object.values(world.resources).find((resource) => resource.name === "snet-app")!.id;
+    const nested = createResource(world, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-nested",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: {
+        ipConfigurations: [{ name: "ipconfig1", properties: { subnet: { id: subnetId } } }],
+      },
+    });
+    assert.equal(nested.ok, true, nested.error?.message);
+    world = nested.value!;
+    const nestedDelete = deleteResource(world, subnetId);
+    assert.equal(nestedDelete.ok, false);
+    assert.ok(nestedDelete.error?.message.includes("no resources in the subnet"));
+    world = deleteResource(world, Object.values(world.resources).find((resource) => resource.name === "nic-nested")!.id).value!;
+
+    const nic = createResource(world, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-web-01",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { subnetId },
+    });
+    assert.equal(nic.ok, true, nic.error?.message);
+    world = nic.value!;
+    const nicId = Object.values(world.resources).find((resource) => resource.name === "nic-web-01")!.id;
+    const vm = createResource(world, {
+      armType: "Microsoft.Compute/virtualMachines",
+      name: "vm-web-01",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      osType: "Linux",
+      properties: { osType: "Linux" },
+    });
+    assert.equal(vm.ok, true, vm.error?.message);
+    world = vm.value!;
+    const vmId = Object.values(world.resources).find((resource) => resource.name === "vm-web-01")!.id;
+    const elsewhere = createResource(world, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-east",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+    });
+    assert.equal(elsewhere.ok, true, elsewhere.error?.message);
+    world = elsewhere.value!;
+    const eastNic = Object.values(world.resources).find((resource) => resource.name === "nic-east")!.id;
+    const wrongRegion = attachNetworkInterface(world, vmId, eastNic);
+    assert.equal(wrongRegion.ok, false);
+    assert.equal(wrongRegion.error?.code, "NicRegionMismatch");
+    const attached = attachNetworkInterface(world, vmId, nicId);
+    assert.equal(attached.ok, true, attached.error?.message);
+    world = attached.value!;
+    const nicDelete = deleteResource(world, nicId);
+    assert.equal(nicDelete.ok, false);
+    assert.ok(nicDelete.error?.message.includes("isn't attached to a VM"));
+
+    const pip = createResource(world, {
+      armType: "Microsoft.Network/publicIPAddresses",
+      name: "pip-web-01",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      sku: { name: "Standard" },
+      properties: { publicIPAllocationMethod: "Static", publicIPAddressVersion: "IPv4" },
+    });
+    assert.equal(pip.ok, true, pip.error?.message);
+    world = pip.value!;
+    const pipId = Object.values(world.resources).find((resource) => resource.name === "pip-web-01")!.id;
+    const linked = attachPublicIp(world, nicId, pipId);
+    assert.equal(linked.ok, true, linked.error?.message);
+    world = linked.value!;
+    const pipDelete = deleteResource(world, pipId);
+    assert.equal(pipDelete.ok, false);
+    assert.ok(pipDelete.error?.message.includes("isn't associated"));
+
+    const nsg = createResource(world, {
+      armType: "Microsoft.Network/networkSecurityGroups",
+      name: "nsg-web",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+    });
+    assert.equal(nsg.ok, true, nsg.error?.message);
+    world = nsg.value!;
+    const nsgId = Object.values(world.resources).find((resource) => resource.name === "nsg-web")!.id;
+    const low = addInboundRule(world, subnetId, nsgId, { port: 443, access: "Allow", priority: 50 });
+    assert.equal(low.ok, false);
+    assert.equal(low.error?.code, "InvalidPriority");
+    const rule = addInboundRule(world, subnetId, nsgId, { port: 443, access: "Allow", priority: 100 });
+    assert.equal(rule.ok, true, rule.error?.message);
+    world = rule.value!;
+    const again = addInboundRule(world, subnetId, nsgId, { port: 80, access: "Deny", priority: 100 });
+    assert.equal(again.ok, false);
+    assert.equal(again.error?.code, "DuplicateRulePriority");
+    const nsgDelete = deleteResource(world, nsgId);
+    assert.equal(nsgDelete.ok, false);
+    assert.ok(nsgDelete.error?.message.includes("can't delete it"));
+    const stored = world.resources[Object.keys(world.resources).find((id) => world.resources[id].name === "nsg-web")!];
+    const rules = stored.properties.securityRules as { properties: { protocol: string; destinationPortRange: string } }[];
+    assert.equal(rules[0].properties.protocol, "Tcp");
+    assert.equal(rules[0].properties.destinationPortRange, "443");
   });
 
   it("marks the remote peering Disconnected when one link is deleted", () => {

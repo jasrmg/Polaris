@@ -55,19 +55,19 @@ const COPY: Record<TrySlug, { title: string; lead: string }> = {
   },
   "public-ip-address": {
     title: "Create a public IP address",
-    lead: "The portal asks for a resource group, a region, a name, and the Standard SKU. This slice records Standard and Static. It does not attach the address to a network interface.",
+    lead: "The portal asks for a resource group, a region, a name, and the Standard SKU. This form records Standard and Static. Attach it to a network interface from My Environment.",
   },
   "network-security-group": {
     title: "Create a network security group",
-    lead: "The portal's create page asks for a resource group, a name, and a region. Inbound rules and associating a subnet come after that, and this slice does not record them.",
+    lead: "The portal's create page asks for a resource group, a name, and a region. Associate it with a subnet and record one inbound rule from My Environment.",
   },
   "network-interface": {
     title: "Create a network interface",
-    lead: "The portal creates this with the virtual machine. Here it is recorded on its own, in the subnet you pick, with a dynamic private address. It is not attached to a virtual machine or a public IP.",
+    lead: "The portal creates this with the virtual machine. Here it is recorded on its own, in the subnet you pick, with a dynamic private address. Attach it to a virtual machine, or a public IP, from My Environment.",
   },
   "virtual-machine": {
     title: "Create a virtual machine",
-    lead: "The portal asks for a resource group, a name, a region, and an image. This slice records the VM and its power state. It does not attach a network interface, a disk, or an administrator key.",
+    lead: "The portal asks for a resource group, a name, a region, and an image. This form records the VM and its power state. Attach a network interface from My Environment. A disk and an administrator key are not recorded.",
   },
   "storage-account": {
     title: "Create a storage account",
@@ -197,6 +197,7 @@ export function CreateView({ slug }: { slug: TrySlug }) {
           resourceGroup: selectedGroup,
           location: selectedSubnet.location,
           properties: {
+            subnetId: selectedSubnet.id,
             ipConfigurations: [
               {
                 name: "ipconfig1",

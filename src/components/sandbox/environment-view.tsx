@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import type { EngineError, Resource } from "@/engine/azure";
 import { resourcePath } from "@/lib/resource-path";
 import { TRY_SLUGS, sandboxCreatePath, type TrySlug } from "@/lib/sandbox-path";
 import { SandboxBanner } from "./sandbox-banner";
@@ -21,6 +23,49 @@ const CREATE_LINKS: { slug: TrySlug; label: string }[] = [
 ];
 
 const healthyBadge = "border-transparent bg-emerald-600/15 text-emerald-800 dark:text-emerald-300";
+const selectClass =
+  "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+
+function typeIs(resource: Resource, typeKey: string): boolean {
+  return resource.type.toLowerCase() === typeKey;
+}
+
+function firstId(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return null;
+}
+
+function named(resources: Resource[], id: string): string {
+  return resources.find((item) => item.id.toLowerCase() === id.toLowerCase())?.name ?? id;
+}
+
+function chosen(resources: Resource[], current: string | null): string {
+  if (current && resources.some((item) => item.id.toLowerCase() === current.toLowerCase())) return current;
+  return resources[0]?.id ?? "";
+}
+
+function linkLines(resource: Resource, resources: Resource[]): string[] {
+  const lines: string[] = [];
+  const nicId = firstId(resource.properties.nicIds);
+  if (nicId) lines.push(`Network interface: ${named(resources, nicId)}`);
+  const pipId = firstId(resource.properties.publicIpAddressId);
+  if (pipId) lines.push(`Public IP address: ${named(resources, pipId)}`);
+  const nsgId = firstId(resource.properties.networkSecurityGroupId);
+  if (nsgId) lines.push(`Network security group: ${named(resources, nsgId)}`);
+  const rules = resource.properties.securityRules;
+  if (!Array.isArray(rules)) return lines;
+  for (const rule of rules) {
+    if (!rule || typeof rule !== "object") continue;
+    const props = (rule as { properties?: unknown }).properties;
+    if (!props || typeof props !== "object") continue;
+    const fields = props as { destinationPortRange?: unknown; access?: unknown; priority?: unknown; direction?: unknown; protocol?: unknown };
+    if (fields.direction === "Inbound" && fields.protocol === "Tcp") {
+      lines.push(`Inbound TCP ${String(fields.destinationPortRange)} ${String(fields.access)}, priority ${String(fields.priority)}. Source Internet.`);
+    }
+  }
+  return lines;
+}
 
 function StateBadge({ label, tone }: { label: string; tone: "healthy" | "failed" | "neutral" }) {
   if (tone === "failed") return <Badge variant="destructive">{label}</Badge>;
@@ -42,7 +87,7 @@ function powerText(state: string): string {
 
 export function EnvironmentView() {
   const session = useSandbox();
-  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<EngineError | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingReset, setPendingReset] = useState(false);
 
@@ -63,21 +108,47 @@ export function EnvironmentView() {
   const groups = Object.values(world.resourceGroups).sort((a, b) => a.name.localeCompare(b.name));
   const resources = Object.values(world.resources).sort((a, b) => a.name.localeCompare(b.name));
 
-  async function removeGroup(id: string) {
-    const error = await session.apply((engine, current) => engine.deleteResourceGroup(current, id));
-    setMessage(error ? error.message : null);
+  async function run(op: Parameters<typeof session.apply>[0]) {
+    setError(await session.apply(op));
     setPendingDelete(null);
+  }
+
+  async function removeGroup(id: string) {
+    await run((engine, current) => engine.deleteResourceGroup(current, id));
   }
 
   async function removeResource(id: string) {
-    const error = await session.apply((engine, current) => engine.deleteResource(current, id));
-    setMessage(error ? error.message : null);
-    setPendingDelete(null);
+    await run((engine, current) => engine.deleteResource(current, id));
   }
 
   async function changePower(id: string, action: "start" | "stop" | "deallocate") {
-    const error = await session.apply((engine, current) => engine.setPower(current, id, action));
-    setMessage(error ? error.message : null);
+    await run((engine, current) => engine.setPower(current, id, action));
+  }
+
+  function attachNic(vmId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nicId = String(new FormData(event.currentTarget).get("nic") ?? "");
+    if (!nicId) return;
+    void run((engine, current) => engine.attachNetworkInterface(current, vmId, nicId));
+  }
+
+  function attachPip(nicId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const publicIpId = String(new FormData(event.currentTarget).get("pip") ?? "");
+    if (!publicIpId) return;
+    void run((engine, current) => engine.attachPublicIp(current, nicId, publicIpId));
+  }
+
+  function associateNsg(subnetId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const nsgId = String(data.get("nsg") ?? "");
+    if (!nsgId) return;
+    void run((engine, current) => engine.addInboundRule(current, subnetId, nsgId, {
+      port: Number(data.get("port")),
+      priority: Number(data.get("priority")),
+      access: data.get("access") === "Deny" ? "Deny" : "Allow",
+    }));
   }
 
   return (
@@ -97,7 +168,7 @@ export function EnvironmentView() {
           </Link>
         ))}
         {pendingReset ? (
-          <Button type="button" variant="outline" onClick={() => { setMessage(null); setPendingReset(false); session.reset(); }}>
+          <Button type="button" variant="outline" onClick={() => { setError(null); setPendingReset(false); session.reset(); }}>
             Confirm reset
           </Button>
         ) : (
@@ -106,10 +177,16 @@ export function EnvironmentView() {
           </Button>
         )}
       </div>
-      {message && (
-        <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm min-w-0 [overflow-wrap:anywhere]">
-          {message}
-        </p>
+      {error && (
+        <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm min-w-0 [overflow-wrap:anywhere]">
+          <p>{error.message}</p>
+          <p className="mt-1 text-muted-foreground">Stopped at {error.step} ({error.code}).</p>
+          {error.learnUrl && (
+            <a href={error.learnUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-primary underline-offset-4 hover:underline">
+              Microsoft Learn
+            </a>
+          )}
+        </div>
       )}
       {groups.length === 0 && resources.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -147,8 +224,14 @@ export function EnvironmentView() {
                     {inside.map((resource) => {
                       const powerState = typeof resource.properties.powerState === "string" ? resource.properties.powerState : null;
                       const provisioning = typeof resource.properties.provisioningState === "string" ? resource.properties.provisioningState : null;
-                      const isVm = resource.type.toLowerCase() === "microsoft.compute/virtualmachines";
+                      const isVm = typeIs(resource, "microsoft.compute/virtualmachines");
+                      const isNic = typeIs(resource, "microsoft.network/networkinterfaces");
+                      const isSubnet = typeIs(resource, "microsoft.network/virtualnetworks/subnets");
                       const canPower = provisioning === "Succeeded";
+                      const links = linkLines(resource, resources);
+                      const nics = inside.filter((item) => typeIs(item, "microsoft.network/networkinterfaces"));
+                      const publicIps = inside.filter((item) => typeIs(item, "microsoft.network/publicipaddresses"));
+                      const nsgs = inside.filter((item) => typeIs(item, "microsoft.network/networksecuritygroups"));
                       return (
                         <li key={resource.id} className="rounded-lg border p-3">
                           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -186,6 +269,76 @@ export function EnvironmentView() {
                                 Deallocate
                               </Button>
                             </div>
+                          )}
+                          {links.length > 0 && (
+                            <ul className="mt-3 grid gap-1 text-sm text-muted-foreground">
+                              {links.map((line) => <li key={line} className="min-w-0 [overflow-wrap:anywhere]">{line}</li>)}
+                            </ul>
+                          )}
+                          {isVm && (
+                            nics.length === 0 ? (
+                              <p className="mt-3 text-sm text-muted-foreground">Create a network interface in this group to attach one.</p>
+                            ) : (
+                              <form className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end" onSubmit={(event) => attachNic(resource.id, event)}>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Network interface
+                                  <select name="nic" className={selectClass} defaultValue={chosen(nics, firstId(resource.properties.nicIds))}>
+                                    {nics.map((nic) => <option key={nic.id} value={nic.id}>{nic.name} · {nic.location}</option>)}
+                                  </select>
+                                </label>
+                                <Button type="submit" size="sm">Attach</Button>
+                              </form>
+                            )
+                          )}
+                          {isNic && (
+                            publicIps.length === 0 ? (
+                              <p className="mt-3 text-sm text-muted-foreground">Create a public IP address in this group to attach one.</p>
+                            ) : (
+                              <form className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end" onSubmit={(event) => attachPip(resource.id, event)}>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Public IP address
+                                  <select name="pip" className={selectClass} defaultValue={chosen(publicIps, firstId(resource.properties.publicIpAddressId))}>
+                                    {publicIps.map((pip) => <option key={pip.id} value={pip.id}>{pip.name} · {pip.location}</option>)}
+                                  </select>
+                                </label>
+                                <Button type="submit" size="sm">Attach</Button>
+                              </form>
+                            )
+                          )}
+                          {isSubnet && (
+                            nsgs.length === 0 ? (
+                              <p className="mt-3 text-sm text-muted-foreground">Create a network security group in this group to associate one.</p>
+                            ) : (
+                              <form className="mt-3 grid gap-2" onSubmit={(event) => associateNsg(resource.id, event)}>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Network security group
+                                  <select name="nsg" className={selectClass} defaultValue={chosen(nsgs, firstId(resource.properties.networkSecurityGroupId))}>
+                                    {nsgs.map((nsg) => <option key={nsg.id} value={nsg.id}>{nsg.name} · {nsg.location}</option>)}
+                                  </select>
+                                </label>
+                                <div className="grid gap-2 sm:grid-cols-3">
+                                  <label className="grid min-w-0 gap-1 text-sm">
+                                    Destination port
+                                    <Input name="port" type="number" defaultValue={443} />
+                                  </label>
+                                  <label className="grid min-w-0 gap-1 text-sm">
+                                    Priority
+                                    <Input name="priority" type="number" defaultValue={100} />
+                                  </label>
+                                  <label className="grid min-w-0 gap-1 text-sm">
+                                    Action
+                                    <select name="access" className={selectClass} defaultValue="Allow">
+                                      <option value="Allow">Allow</option>
+                                      <option value="Deny">Deny</option>
+                                    </select>
+                                  </label>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Inbound TCP from Internet, any source port, any destination address. This records the rule. It does not check whether traffic would pass.
+                                </p>
+                                <Button type="submit" size="sm" className="w-fit">Associate and add rule</Button>
+                              </form>
+                            )
                           )}
                         </li>
                       );

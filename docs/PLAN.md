@@ -6,7 +6,7 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 ## 0. Start here (handoff summary)
 
-**Last updated:** 2026-11-04. Checkpoints 1-14 are committed (engine core `bd45c75`, directory and RBAC `76c3395`, deny and audit policy `5383ef5`). Checkpoint 15's first slice is committed (`5bd4c1a`, naming examples `3379c7d`). The second slice (public IP, network security group, network interface) is in the working tree and not committed yet.
+**Last updated:** 2026-11-04. Checkpoints 1-14 are committed (engine core `bd45c75`, directory and RBAC `76c3395`, deny and audit policy `5383ef5`). Checkpoint 15's first slice is committed (`5bd4c1a`, naming examples `3379c7d`). The second slice (public IP, network security group, network interface) is committed (`6e243a4`). A third slice, linking those resources from My Environment, is in the working tree and not committed yet.
 
 **What we are building.** Polaris is a free, browser-only place to learn and try out Azure. It has two parts:
 
@@ -15,7 +15,7 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 **Who it is for.** The owner is studying for AZ-104 and then AZ-400, but the product is **not exam-specific**. Exams are tags and study aids. Scope is "as many Azure resources and services as possible", RBAC included. **Polaris is meant to become multi-cloud, but version 1 contains only Azure.** As the owner studies other cloud providers (AWS first, then possibly GCP or others) they will be added, only after Azure v1 ships and Azure is covered (section 10). Design choices made now should not block that: keep Azure-specific details (hierarchy levels, example formats, regions, rule packs) separable from the generic engine and content shape.
 
-**Where we are.** Checkpoints 1-14 are done and committed. Checkpoint 15's first slice (My Environment and five create forms) is committed. The second slice adds hand-written forms for a public IP address, a network security group, and a network interface. The form generator, and create forms for the other tier 1 and tier 2 entries, are still the rest of checkpoint 15 (section 6).
+**Where we are.** Checkpoints 1-14 are done and committed. Checkpoint 15's first two slices are committed: My Environment and five create forms, then public IP, network security group, and network interface (`6e243a4`). The working tree links a network interface to a virtual machine, a public IP to that interface, and a network security group to a subnet with one inbound rule. The form generator, and create forms for the other tier 1 and tier 2 entries, are still the rest of checkpoint 15 (section 6). Reachability stays checkpoint 16.
 
 **Decisions already made by the owner (2026-10-27, details in section 14):** the Cloud Shell runs ARM JSON only in v1 (Bicep is compiled to ARM at build time); the sandbox has switchable identities ("act as"); one tenant with a default subscription and the ability to add subscriptions and management groups; built-in roles ship only if Learn documents them, with permissions taken from the owner's own `az role definition list` export.
 
@@ -111,7 +111,7 @@ Batching tip: verification of several entries can be split across read-only suba
   - `src/content/index.ts` loader: checks slugs are unique, that `related` and `prerequisites[].slug` point at real entries, that `nameRule` exists, and that `simulator.apiVersion` appears in the entry's Bicep or ARM example.
   - `src/content/hierarchy.ts`, `regions.ts`, `summary.ts`, `payload.ts`: hierarchy levels, region list, list-card shape, detail payload.
 - **Icons:** `src/components/resource-icon.tsx` maps a lucide icon name to a component. Add new icon names there (fallback is Cloud).
-- **Routes:** home (hierarchy map + searchable catalog), `/resources/<slug>/` (full page), `/data/resources/<slug>` (static JSON used by the client modal), `/sandbox/` (My Environment) and `/sandbox/<slug>/` for the five Try it forms. The modal opens via the History API and is shareable by URL. Sandbox pages load the engine with a dynamic import so the catalog bundle does not include the roles file.
+- **Routes:** home (hierarchy map + searchable catalog), `/resources/<slug>/` (full page), `/data/resources/<slug>` (static JSON used by the client modal), `/sandbox/` (My Environment) and `/sandbox/<slug>/` for the eight Try it forms. The modal opens via the History API and is shareable by URL. Sandbox pages load the engine with a dynamic import so the catalog bundle does not include the roles file.
 - **Snippet checker:** `scripts/check-snippets.ts` compiles every Bicep example with the real Bicep CLI and parses every ARM example. It catches wrong property names.
 - **Snippet writing rules** (inside TS template literals): no `${}`; use `\\` for bash line continuation; use `` \` `` for the PowerShell backtick.
 
@@ -146,7 +146,7 @@ Reordered 2026-10-25. Each checkpoint ends with the checks in section 3 and a co
 
 ### Done
 
-Checkpoints 1-14 (see the status log in section 9). Checkpoint 15's first slice is committed. The second slice is in the working tree and not committed yet.
+Checkpoints 1-14 (see the status log in section 9). Checkpoint 15's first two slices are committed (`5bd4c1a`, `6e243a4`). The link slice is in the working tree and not committed yet.
 
 ### Finished in checkpoints 10, 11 and 12
 
@@ -181,8 +181,11 @@ Checkpoints 1-14 (see the status log in section 9). Checkpoint 15's first slice 
 - My Environment at `/sandbox/`, saved in the existing `localStorage` envelope. Hand-written create forms for a resource group, virtual network, subnet, virtual machine, and storage account. The page shows the engine's refusal, including the step and the Learn link.
 - The catalog loads the engine only from those sandbox pages, with a dynamic import. Other entries keep Try it disabled.
 
-**Checkpoint 15 - second slice** *(in the working tree, 2026-11-04, not committed)*
-- Hand-written create forms for a public IP address, a network security group, and a network interface. The public IP records Standard and Static, and refuses a DNS label already used in that region. The network security group is the create page only: no rules and no subnet association. The network interface is recorded on a subnet and is not attached to a VM. It has no catalog page.
+**Checkpoint 15 - second slice** *(done, 2026-11-04, `6e243a4`)*
+- Hand-written create forms for a public IP address, a network security group, and a network interface. The public IP records Standard and Static, and refuses a DNS label already used in that region. The network security group form is the create page only. The network interface is recorded on a subnet. It has no catalog page.
+
+**Checkpoint 15 - link slice** *(in the working tree, 2026-11-04, not committed)*
+- From My Environment: attach one existing network interface to a virtual machine, attach one existing public IP to that interface, and associate a network security group with a subnet while recording one inbound TCP rule (port, allow or deny, priority). The engine refuses a priority outside 100–4096, a second rule with the same priority and direction, a region mismatch, and a delete while the link exists. It does not decide whether traffic would pass.
 
 ### Next
 
@@ -265,7 +268,7 @@ These were starting points, not verified facts.
 | 12 | Engine core (world, hierarchy, create/update/delete, names, CIDR, VM power, locks). No UI. | Done | `bd45c75` |
 | 13 | Directory, RBAC evaluator, built-in roles, seven catalog entries. No Try it page. | Done | `76c3395` |
 | 14 | Tags, locks, and deny/audit Policy, plus four catalog entries. | Done | `5383ef5` |
-| 15 | Try it. First slice: five resources and My Environment. Second slice: public IP, network security group, network interface. Generator and the other forms still to do. | Second slice in the working tree | `5bd4c1a` |
+| 15 | Try it. First slice: five resources and My Environment. Second slice: public IP, network security group, network interface (`6e243a4`). Link slice in the working tree. Generator and the other forms still to do. | Link slice in the working tree | `5bd4c1a` |
 | 16-20 | See roadmap in section 6 | Not started | |
 
 Docs-only commits: `71121bf` (first plan), `0c9ad5d` (roadmap reorder), `c0458c1` (plan refresh, real README, agent notes, backlog).

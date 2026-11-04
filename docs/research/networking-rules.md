@@ -1,6 +1,6 @@
 # Azure networking rules for the Polaris reachability checker
 
-**Status:** research output for roadmap checkpoint 16 (networking behaviour and reachability checker). No code was changed.
+**Status:** research output for roadmap checkpoint 16 (networking behaviour and reachability checker). Checkpoint 15's link slice records one inbound rule and a subnet association. It does not evaluate whether traffic would pass. This file was research only when it was written.
 **Accessed:** 2026-10-27 (all URLs fetched that day, `en-us` locale).
 **Sources:** `learn.microsoft.com` only (docs, REST reference, Learn training). No third-party pages were used.
 **Method:** every fact below carries a source ID such as `[S1]`. The ID table is in section 9. If a fact could not be verified, it is tagged `[Unverified]`. If two Learn pages disagree, it is tagged `[Conflict]`. A choice the owner should make is tagged `[Decision]`.
