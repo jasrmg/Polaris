@@ -14,6 +14,7 @@ export { parseCidr, containsCidr, overlapsCidr } from "./cidr";
 export { parseId, canonicalId, resourceId } from "./ids";
 export { validateName, NAME_ARM_TYPES } from "./names";
 export { powerIsBilled, powerLabel } from "./ops";
+export { checkInboundInternet, type InboundCheck } from "./reach";
 export {
   advance,
   createManagementGroup,

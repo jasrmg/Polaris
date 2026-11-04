@@ -20,6 +20,7 @@ export const LEARN = {
   subnet: "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-manage-subnet",
   nsg: "https://learn.microsoft.com/en-us/azure/virtual-network/manage-network-security-group",
   nsgOverview: "https://learn.microsoft.com/en-us/azure/virtual-network/network-security-groups-overview",
+  nsgHowItWorks: "https://learn.microsoft.com/en-us/azure/virtual-network/network-security-group-how-it-works",
   publicIp: "https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/virtual-network-public-ip-address",
   routeTable: "https://learn.microsoft.com/en-us/azure/virtual-network/manage-route-table",
   vnet: "https://learn.microsoft.com/en-us/azure/virtual-network/manage-virtual-network",

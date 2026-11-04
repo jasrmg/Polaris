@@ -5,7 +5,7 @@ import { useState, type FormEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { EngineError, Resource } from "@/engine/azure";
+import type { EngineError, InboundCheck, Resource } from "@/engine/azure";
 import { resourcePath } from "@/lib/resource-path";
 import { TRY_SLUGS, sandboxCreatePath, type TrySlug } from "@/lib/sandbox-path";
 import { SandboxBanner } from "./sandbox-banner";
@@ -88,6 +88,7 @@ function powerText(state: string): string {
 export function EnvironmentView() {
   const session = useSandbox();
   const [error, setError] = useState<EngineError | null>(null);
+  const [checks, setChecks] = useState<Record<string, InboundCheck & { details: string[] }>>({});
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingReset, setPendingReset] = useState(false);
 
@@ -151,6 +152,25 @@ export function EnvironmentView() {
     }));
   }
 
+  function checkInbound(vmId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session.engine || !session.world) return;
+    const port = Number(new FormData(event.currentTarget).get("port"));
+    const result = session.engine.checkInboundInternet(session.world, vmId, port);
+    if (!result.ok || !result.value) {
+      setError(result.error ?? { code: "Failed", message: "The check could not run.", step: "validate" });
+      return;
+    }
+    setError(null);
+    setChecks((current) => ({
+      ...current,
+      [vmId]: {
+        ...result.value!,
+        details: result.trace.flatMap((line) => line.detail ? [line.detail] : []),
+      },
+    }));
+  }
+
   return (
     <div className="grid gap-6">
       <SandboxBanner />
@@ -168,7 +188,7 @@ export function EnvironmentView() {
           </Link>
         ))}
         {pendingReset ? (
-          <Button type="button" variant="outline" onClick={() => { setError(null); setPendingReset(false); session.reset(); }}>
+          <Button type="button" variant="outline" onClick={() => { setError(null); setChecks({}); setPendingReset(false); session.reset(); }}>
             Confirm reset
           </Button>
         ) : (
@@ -290,6 +310,35 @@ export function EnvironmentView() {
                               </form>
                             )
                           )}
+                          {isVm && (
+                            <form className="mt-3 grid gap-2" onSubmit={(event) => checkInbound(resource.id, event)}>
+                              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Inbound from the internet, destination port
+                                  <Input name="port" type="number" defaultValue={443} />
+                                </label>
+                                <Button type="submit" size="sm">Check</Button>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                A new TCP connection to the public IP. The subnet network security group is checked first. Routes, peering, and DNS are not part of this check.
+                              </p>
+                              {checks[resource.id] && (
+                                <div className="rounded-lg border p-3 text-sm">
+                                  <p className={checks[resource.id].allowed ? "text-emerald-800 dark:text-emerald-300" : undefined}>
+                                    {checks[resource.id].summary}
+                                  </p>
+                                  <ul className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                                    {checks[resource.id].details.map((line) => (
+                                      <li key={line} className="min-w-0 [overflow-wrap:anywhere]">{line}</li>
+                                    ))}
+                                  </ul>
+                                  <a href={checks[resource.id].learnUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-primary underline-offset-4 hover:underline">
+                                    Microsoft Learn
+                                  </a>
+                                </div>
+                              )}
+                            </form>
+                          )}
                           {isNic && (
                             publicIps.length === 0 ? (
                               <p className="mt-3 text-sm text-muted-foreground">Create a public IP address in this group to attach one.</p>
@@ -334,7 +383,7 @@ export function EnvironmentView() {
                                   </label>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  Inbound TCP from Internet, any source port, any destination address. This records the rule. It does not check whether traffic would pass.
+                                  Inbound TCP from Internet, any source port, any destination address. This records the rule. The virtual machine has the inbound check.
                                 </p>
                                 <Button type="submit" size="sm" className="w-fit">Associate and add rule</Button>
                               </form>

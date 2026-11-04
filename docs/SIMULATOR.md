@@ -180,7 +180,7 @@ Checkpoint 14 built this. Evidence is [`research/policy-model.md`](research/poli
 
 ## 6. Networking behaviour (tier 1)
 
-Checkpoint 16 builds the reachability checker. The full algorithm, with every step cited, is in [`research/networking-rules.md`](research/networking-rules.md) section 7. This section freezes the **decisions** that research left to the owner. They are **[Decision]**s by the assistant using the research's recommendation, listed so the owner can overrule any of them. Where Learn pages disagree, both pages are named in the research file (section 8.2).
+Checkpoint 16 builds the reachability checker. The first slice answers one question: a new inbound TCP connection from the internet to a virtual machine's Standard public IP, on one port. It evaluates the subnet network security group first, then the network interface network security group, and names the matching rule. No network security group on either one denies that flow (decision N1). Routes, peering, DNS, and appliances are still the rest of the checkpoint. The full algorithm, with every step cited, is in [`research/networking-rules.md`](research/networking-rules.md) section 7. This section freezes the **decisions** that research left to the owner. They are **[Decision]**s by the assistant using the research's recommendation, listed so the owner can overrule any of them. Where Learn pages disagree, both pages are named in the research file (section 8.2).
 
 | # | Topic | Chosen rule | Why |
 |---|---|---|---|

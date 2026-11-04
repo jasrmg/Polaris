@@ -6,7 +6,7 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 ## 0. Start here (handoff summary)
 
-**Last updated:** 2026-11-04. Checkpoints 1-14 are committed (engine core `bd45c75`, directory and RBAC `76c3395`, deny and audit policy `5383ef5`). Checkpoint 15's first slice is committed (`5bd4c1a`, naming examples `3379c7d`). The second slice (public IP, network security group, network interface) is committed (`6e243a4`). A third slice, linking those resources from My Environment, is in the working tree and not committed yet.
+**Last updated:** 2026-11-04. Checkpoints 1-14 are committed (engine core `bd45c75`, directory and RBAC `76c3395`, deny and audit policy `5383ef5`). Checkpoint 15 is committed through the link slice (`5bd4c1a`, naming examples `3379c7d`, public IP, network security group, and network interface `6e243a4`, links `e7696b3`). Checkpoint 16's first question is in the working tree and not committed yet.
 
 **What we are building.** Polaris is a free, browser-only place to learn and try out Azure. It has two parts:
 
@@ -15,7 +15,7 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 **Who it is for.** The owner is studying for AZ-104 and then AZ-400, but the product is **not exam-specific**. Exams are tags and study aids. Scope is "as many Azure resources and services as possible", RBAC included. **Polaris is meant to become multi-cloud, but version 1 contains only Azure.** As the owner studies other cloud providers (AWS first, then possibly GCP or others) they will be added, only after Azure v1 ships and Azure is covered (section 10). Design choices made now should not block that: keep Azure-specific details (hierarchy levels, example formats, regions, rule packs) separable from the generic engine and content shape.
 
-**Where we are.** Checkpoints 1-14 are done and committed. Checkpoint 15's first two slices are committed: My Environment and five create forms, then public IP, network security group, and network interface (`6e243a4`). The working tree links a network interface to a virtual machine, a public IP to that interface, and a network security group to a subnet with one inbound rule. The form generator, and create forms for the other tier 1 and tier 2 entries, are still the rest of checkpoint 15 (section 6). Reachability stays checkpoint 16.
+**Where we are.** Checkpoints 1-14 are done and committed. Checkpoint 15 is committed through My Environment, eight create forms, and the links between a virtual machine, network interface, public IP, and a subnet network security group (`e7696b3`). The working tree adds one reachability question: a new inbound TCP connection from the internet to that public IP. The form generator, and create forms for the other tier 1 and tier 2 entries, are still the rest of checkpoint 15 (section 6). Routes, peering, DNS, and appliances are still the rest of checkpoint 16.
 
 **Decisions already made by the owner (2026-10-27, details in section 14):** the Cloud Shell runs ARM JSON only in v1 (Bicep is compiled to ARM at build time); the sandbox has switchable identities ("act as"); one tenant with a default subscription and the ability to add subscriptions and management groups; built-in roles ship only if Learn documents them, with permissions taken from the owner's own `az role definition list` export.
 
@@ -146,7 +146,7 @@ Reordered 2026-10-25. Each checkpoint ends with the checks in section 3 and a co
 
 ### Done
 
-Checkpoints 1-14 (see the status log in section 9). Checkpoint 15's first two slices are committed (`5bd4c1a`, `6e243a4`). The link slice is in the working tree and not committed yet.
+Checkpoints 1-14 (see the status log in section 9). Checkpoint 15 is committed through the link slice (`e7696b3`). Checkpoint 16's first question is in the working tree and not committed yet.
 
 ### Finished in checkpoints 10, 11 and 12
 
@@ -184,17 +184,20 @@ Checkpoints 1-14 (see the status log in section 9). Checkpoint 15's first two sl
 **Checkpoint 15 - second slice** *(done, 2026-11-04, `6e243a4`)*
 - Hand-written create forms for a public IP address, a network security group, and a network interface. The public IP records Standard and Static, and refuses a DNS label already used in that region. The network security group form is the create page only. The network interface is recorded on a subnet. It has no catalog page.
 
-**Checkpoint 15 - link slice** *(in the working tree, 2026-11-04, not committed)*
-- From My Environment: attach one existing network interface to a virtual machine, attach one existing public IP to that interface, and associate a network security group with a subnet while recording one inbound TCP rule (port, allow or deny, priority). The engine refuses a priority outside 100–4096, a second rule with the same priority and direction, a region mismatch, and a delete while the link exists. It does not decide whether traffic would pass.
+**Checkpoint 15 - link slice** *(done, 2026-11-04, `e7696b3`)*
+- From My Environment: attach one existing network interface to a virtual machine, attach one existing public IP to that interface, and associate a network security group with a subnet while recording one inbound TCP rule (port, allow or deny, priority). The engine refuses a priority outside 100–4096, a second rule with the same priority and direction, a region mismatch, and a delete while the link exists.
+
+**Checkpoint 16 - inbound internet check, first slice** *(in the working tree, 2026-11-04, not committed)*
+- On the virtual machine in My Environment: one port, and the answer for a new inbound TCP connection from the internet to its public IP. The subnet network security group is evaluated first, then the network interface network security group. No network security group on either one denies inbound internet traffic to a Standard public IP. The answer names the rule. Routes, peering, DNS, and appliances are not part of this check.
 
 ### Next
 
 **Checkpoint 15 - the rest**
 - The generator script (`Azure/bicep-types-az` at a pinned commit, pruned per type, plus the hand-written overlay; `docs/SIMULATOR.md` section 11) and a create form for each remaining tier 1 and tier 2 entry. Portal labels stay hand-written. The generator does not supply them.
 
-**Checkpoint 16 - Networking behaviour and reachability checker**
-- Route selection (longest prefix, then UDR > BGP > system), NSG evaluation, peering (non-transitive, forwarded traffic, gateway transit), NVA forwarding, DNS (public, private, links, autoregistration), service and private endpoints.
-- "Can A reach B?" with a full trace and the rule that allowed or blocked each hop.
+**Checkpoint 16 - the rest**
+- Route selection (longest prefix, then UDR > BGP > system), the rest of NSG evaluation, peering (non-transitive, forwarded traffic, gateway transit), NVA forwarding, DNS (public, private, links, autoregistration), service and private endpoints.
+- "Can A reach B?" with a full trace and the rule that allowed or blocked each hop. The first slice above answers only inbound internet TCP to a virtual machine's public IP.
 
 **Checkpoint 17 - Cloud Shell v1**
 - Terminal UI in the page, mini-shell, command parser and registry, and the first command groups (wave list in `docs/CLOUDSHELL.md` section 11): session commands, `az group`, `az network ...`, `az vm`, `az storage account`, `az role assignment`.
@@ -268,8 +271,9 @@ These were starting points, not verified facts.
 | 12 | Engine core (world, hierarchy, create/update/delete, names, CIDR, VM power, locks). No UI. | Done | `bd45c75` |
 | 13 | Directory, RBAC evaluator, built-in roles, seven catalog entries. No Try it page. | Done | `76c3395` |
 | 14 | Tags, locks, and deny/audit Policy, plus four catalog entries. | Done | `5383ef5` |
-| 15 | Try it. First slice: five resources and My Environment. Second slice: public IP, network security group, network interface (`6e243a4`). Link slice in the working tree. Generator and the other forms still to do. | Link slice in the working tree | `5bd4c1a` |
-| 16-20 | See roadmap in section 6 | Not started | |
+| 15 | Try it. Five resources and My Environment, then public IP, network security group, and network interface (`6e243a4`), then the links (`e7696b3`). Generator and the other forms still to do. | Links committed | `e7696b3` |
+| 16 | Reachability. First question: inbound internet TCP to a virtual machine's public IP. The rest is not started. | First question in the working tree | |
+| 17-20 | See roadmap in section 6 | Not started | |
 
 Docs-only commits: `71121bf` (first plan), `0c9ad5d` (roadmap reorder), `c0458c1` (plan refresh, real README, agent notes, backlog).
 
