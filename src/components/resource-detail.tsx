@@ -3,10 +3,11 @@
 import { ArrowRight, Check, CircleHelp, ExternalLink, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ResourcePayload } from "@/content/payload";
 import { resourcePath } from "@/lib/resource-path";
+import { isTrySlug, sandboxCreatePath } from "@/lib/sandbox-path";
 import { CodeBlock } from "./code-block";
 
 interface ResourceDetailProps {
@@ -167,13 +168,22 @@ export function ResourceDetail({ resource, onOpenResource }: ResourceDetailProps
         )}
 
         <div className="flex flex-wrap items-center gap-3 border-t pt-4">
-          <Button disabled>
-            <Sparkles />
-            Try it
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            The free simulator is coming soon.
-          </span>
+          {isTrySlug(resource.slug) ? (
+            <Link href={sandboxCreatePath(resource.slug)} className={buttonVariants()}>
+              <Sparkles />
+              Try it
+            </Link>
+          ) : (
+            <>
+              <Button disabled>
+                <Sparkles />
+                Try it
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Try it is on for a resource group, virtual network, subnet, virtual machine, and storage account.
+              </span>
+            </>
+          )}
           <a
             href={resource.docsUrl}
             target="_blank"

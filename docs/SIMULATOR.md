@@ -228,7 +228,7 @@ src/content/            catalog entries (unchanged location until the multi-clou
 
 Checkpoint 12 built `core` and the Azure pack. Checkpoint 13 added `data/` and `rbac/`. Checkpoint 14 evaluates deny and audit on resource and resource group writes. `cli/` is not created yet.
 
-Dependency rule: `core` imports nothing from `azure`; `cli` and the UI import the engine, never the other way round. A lint rule (`no-restricted-imports`) enforces it. The UI does not import the engine yet.
+Dependency rule: `core` imports nothing from `azure`; `cli` and the UI import the engine, never the other way round. A lint rule (`no-restricted-imports`) enforces the core side. Sandbox pages load `@/engine/azure` with a dynamic import. Catalog pages do not import it, so the roles file stays out of the catalog bundle.
 
 ## 9. Schema decisions for the catalog (applied in checkpoint 11)
 
@@ -321,7 +321,7 @@ Full evidence: [`research/spike-a-generated-forms.md`](research/spike-a-generate
 4. **Risks and mitigations:** "required" in the types is not "portal-required" (the overlay declares it). Enums are open (the trailing string is dropped to make a dropdown, and the UI says "values listed in the API definition"). The generator is moving to TypeSpec and types have disappeared and returned (DNS), so **pin a commit SHA** and fail the build if an expected `Type@version` key is missing. Add the MIT notice to a credits page.
 5. **API version rule:** the generated schema must be pinned to the same API version as the catalog's Bicep example for that type, otherwise form fields and example code drift.
 6. **Pruning:** an allow-list of property paths per type keeps each type to the fields a portal form shows (a VNet closure is about 560 nodes unpruned).
-7. **When:** the generator script is built in checkpoint 15 (create pages), not before; checkpoints 11 to 14 do not need it.
+7. **When:** checkpoint 15. The first slice wires hand-written create forms for a resource group, virtual network, subnet, virtual machine, and storage account, plus the My Environment list. Those forms call the engine and show its refusal. The generator script, and create forms for the other tier 1 and tier 2 entries, are the rest of checkpoint 15. The generator still does not supply portal labels.
 
 ## 12. Multi-cloud readiness (section 10 of the plan, made concrete)
 

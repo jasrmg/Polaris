@@ -5,7 +5,7 @@ A free, browser-only place to learn and try out Azure. Nothing is hosted, nothin
 Polaris has two parts:
 
 - **Atlas (built):** a catalog of Azure resources. Each entry has a plain-English definition, an analogy, when to use it, prerequisites, example configuration (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
-- **Sandbox (engine, RBAC, and Policy built, page not wired):** create and configure those resources in a simulated tenant, with RBAC, deny/audit policy, and a simulated Cloud Shell that runs `az` commands against an in-browser world. The engine is in `src/engine/`. Try it is still disabled.
+- **Sandbox (five resources you can create):** create a resource group, virtual network, subnet, virtual machine, or storage account in a simulated tenant. The engine also evaluates RBAC and deny/audit policy. A simulated Cloud Shell that runs `az` is still to come. The engine is in `src/engine/`. Open it from **My Environment**.
 
 Every fact in the catalog is checked against Microsoft Learn or other official Microsoft documentation.
 
@@ -15,7 +15,7 @@ Every fact in the catalog is checked against Microsoft Learn or other official M
 
 ## Status
 
-43 entries, including the directory and RBAC entries and Tag, Resource lock, Policy definition, and Policy assignment. The sandbox design is in `docs/SIMULATOR.md`, `docs/RBAC.md` and `docs/CLOUDSHELL.md` (evidence in `docs/research/`). The engine in `src/engine/` evaluates Azure RBAC and five built-in policies, and is not connected to the catalog yet. See the roadmap in `docs/PLAN.md`.
+43 entries, including the directory and RBAC entries and Tag, Resource lock, Policy definition, and Policy assignment. The sandbox design is in `docs/SIMULATOR.md`, `docs/RBAC.md` and `docs/CLOUDSHELL.md` (evidence in `docs/research/`). The engine in `src/engine/` evaluates Azure RBAC and five built-in policies. Try it is on for five resources; the other catalog entries stay documentation until their forms are added. See the roadmap in `docs/PLAN.md`.
 
 ## Run it
 
@@ -50,8 +50,8 @@ If the Bicep CLI is not found, `check:snippets` skips the Bicep checks and says 
 | `src/content/hierarchy.ts`, `regions.ts` | Hierarchy levels and the two simulated regions |
 | `src/components/` | UI: explorer, hierarchy map, cards, detail view, modal, code blocks |
 | `src/components/resource-icon.tsx` | Maps an entry's icon name to a lucide icon |
-| `src/app/` | Next.js App Router pages: home, `/resources/<slug>/`, and static JSON used by the modal |
-| `src/engine/` | In-browser Azure world (not imported by the pages yet) |
+| `src/app/` | Next.js App Router pages: home, `/resources/<slug>/`, `/sandbox/`, and static JSON used by the modal |
+| `src/engine/` | In-browser Azure world. Sandbox pages load it with a dynamic import. Catalog pages do not. |
 | `scripts/check-snippets.ts` | The snippet checker |
 | `docs/` | Plan (`PLAN.md`), sandbox design (`SIMULATOR.md`, `RBAC.md`, `CLOUDSHELL.md`), backlog, and `research/` (evidence reports with sources) |
 

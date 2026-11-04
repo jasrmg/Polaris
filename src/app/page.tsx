@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Explorer } from "@/components/explorer";
 import { resources } from "@/content";
 import { toSummary } from "@/content/summary";
@@ -14,7 +15,10 @@ export default function Home() {
         </h1>
         <p className="mt-4 text-base text-muted-foreground sm:text-lg">
           Plain-English definitions, what you need before you create each one,
-          and example configuration. No Azure account required.
+          and example configuration. No Azure account required.{" "}
+          <Link href="/sandbox/" className="text-primary underline-offset-4 hover:underline">
+            Try a few in a simulated subscription.
+          </Link>
         </p>
       </section>
 

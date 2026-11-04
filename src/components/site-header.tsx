@@ -12,7 +12,12 @@ export function SiteHeader() {
           </span>
           Polaris
         </Link>
-        <ThemeToggle />
+        <div className="flex items-center gap-3">
+          <Link href="/sandbox/" className="text-sm text-muted-foreground hover:text-foreground">
+            My Environment
+          </Link>
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );
