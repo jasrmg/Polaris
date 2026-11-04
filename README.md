@@ -5,7 +5,7 @@ A free, browser-only place to learn and try out Azure. Nothing is hosted, nothin
 Polaris has two parts:
 
 - **Atlas (built):** a catalog of Azure resources. Each entry has a plain-English definition, an analogy, when to use it, prerequisites, example configuration (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
-- **Sandbox (five resources you can create):** create a resource group, virtual network, subnet, virtual machine, or storage account in a simulated tenant. The engine also evaluates RBAC and deny/audit policy. A simulated Cloud Shell that runs `az` is still to come. The engine is in `src/engine/`. Open it from **My Environment**.
+- **Sandbox (eight create forms):** create a resource group, virtual network, subnet, public IP address, network security group, network interface, virtual machine, or storage account in a simulated tenant. The engine also evaluates RBAC and deny/audit policy. A simulated Cloud Shell that runs `az` is still to come. The engine is in `src/engine/`. Open it from **My Environment**.
 
 Every fact in the catalog is checked against Microsoft Learn or other official Microsoft documentation.
 
@@ -15,7 +15,7 @@ Every fact in the catalog is checked against Microsoft Learn or other official M
 
 ## Status
 
-43 entries, including the directory and RBAC entries and Tag, Resource lock, Policy definition, and Policy assignment. The sandbox design is in `docs/SIMULATOR.md`, `docs/RBAC.md` and `docs/CLOUDSHELL.md` (evidence in `docs/research/`). The engine in `src/engine/` evaluates Azure RBAC and five built-in policies. Try it is on for five resources; the other catalog entries stay documentation until their forms are added. See the roadmap in `docs/PLAN.md`.
+43 entries, including the directory and RBAC entries and Tag, Resource lock, Policy definition, and Policy assignment. The sandbox design is in `docs/SIMULATOR.md`, `docs/RBAC.md` and `docs/CLOUDSHELL.md` (evidence in `docs/research/`). The engine in `src/engine/` evaluates Azure RBAC and five built-in policies. Try it is on for seven catalog entries, and a network interface can be created from My Environment. The other catalog entries stay documentation until their forms are added. See the roadmap in `docs/PLAN.md`.
 
 ## Run it
 

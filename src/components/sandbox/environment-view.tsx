@@ -13,6 +13,9 @@ const CREATE_LINKS: { slug: TrySlug; label: string }[] = [
   { slug: "resource-group", label: "Resource group" },
   { slug: "virtual-network", label: "Virtual network" },
   { slug: "subnet", label: "Subnet" },
+  { slug: "public-ip-address", label: "Public IP address" },
+  { slug: "network-security-group", label: "Network security group" },
+  { slug: "network-interface", label: "Network interface" },
   { slug: "virtual-machine", label: "Virtual machine" },
   { slug: "storage-account", label: "Storage account" },
 ];
@@ -198,7 +201,7 @@ export function EnvironmentView() {
         Try it in this slice: {TRY_SLUGS.map((slug, index) => (
           <span key={slug}>
             {index > 0 ? ", " : ""}
-            <Link href={resourcePath(slug)} className="underline-offset-4 hover:underline">{slug}</Link>
+            <Link href={slug === "network-interface" ? sandboxCreatePath(slug) : resourcePath(slug)} className="underline-offset-4 hover:underline">{slug}</Link>
           </span>
         ))}
         . Other catalog entries stay documentation until their forms are added.

@@ -14,6 +14,9 @@ export async function generateMetadata({
   params,
 }: PageProps<"/sandbox/[slug]">): Promise<Metadata> {
   const { slug } = await params;
+  if (slug === "network-interface") {
+    return { title: "Create a network interface", description: "Simulated. Nothing here touches real Azure." };
+  }
   const resource = isTrySlug(slug) ? getResource(slug) : undefined;
   if (!resource) return {};
   return { title: `Create ${resource.name}`, description: "Simulated. Nothing here touches real Azure." };

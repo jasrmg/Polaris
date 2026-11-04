@@ -6,16 +6,16 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 ## 0. Start here (handoff summary)
 
-**Last updated:** 2026-11-04. Checkpoints 1-14 are committed (engine core `bd45c75`, directory and RBAC `76c3395`, deny and audit policy `5383ef5`). Checkpoint 15's first slice (Try it for five resources) is in the working tree and not committed yet.
+**Last updated:** 2026-11-04. Checkpoints 1-14 are committed (engine core `bd45c75`, directory and RBAC `76c3395`, deny and audit policy `5383ef5`). Checkpoint 15's first slice is committed (`5bd4c1a`, naming examples `3379c7d`). The second slice (public IP, network security group, network interface) is in the working tree and not committed yet.
 
 **What we are building.** Polaris is a free, browser-only place to learn and try out Azure. It has two parts:
 
 1. **Atlas (built, 43 entries):** a catalog of Azure resources. Each has a plain-English definition, an analogy, when to use it, prerequisites, examples (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
-2. **Sandbox (engine wired for five resources):** create and configure those resources in a simulated tenant, including RBAC and deny/audit policy, with a simulated Cloud Shell that runs `az` commands against the in-browser world. The engine can create, update and delete the current catalog types, evaluates Azure RBAC and five built-in policies, and stores the world in `localStorage`. Try it is on for a resource group, virtual network, subnet, virtual machine, and storage account. Catalog pages do not import the engine. **Nothing is ever hosted and nothing ever talks to real Azure.** The goal is to get "the feel" of Azure for free.
+2. **Sandbox (engine wired for eight create forms):** create and configure those resources in a simulated tenant, including RBAC and deny/audit policy, with a simulated Cloud Shell that runs `az` commands against the in-browser world. The engine can create, update and delete the current catalog types, evaluates Azure RBAC and five built-in policies, and stores the world in `localStorage`. Try it is on for a resource group, virtual network, subnet, public IP address, network security group, network interface, virtual machine, and storage account. The network interface has no catalog page of its own. Catalog pages do not import the engine. **Nothing is ever hosted and nothing ever talks to real Azure.** The goal is to get "the feel" of Azure for free.
 
 **Who it is for.** The owner is studying for AZ-104 and then AZ-400, but the product is **not exam-specific**. Exams are tags and study aids. Scope is "as many Azure resources and services as possible", RBAC included. **Polaris is meant to become multi-cloud, but version 1 contains only Azure.** As the owner studies other cloud providers (AWS first, then possibly GCP or others) they will be added, only after Azure v1 ships and Azure is covered (section 10). Design choices made now should not block that: keep Azure-specific details (hierarchy levels, example formats, regions, rule packs) separable from the generic engine and content shape.
 
-**Where we are.** Checkpoints 1-14 are done and committed. Checkpoint 15's first slice adds My Environment and hand-written create forms for a resource group, virtual network, subnet, virtual machine, and storage account. The form generator, and create forms for the other tier 1 and tier 2 entries, are still the rest of checkpoint 15 (section 6).
+**Where we are.** Checkpoints 1-14 are done and committed. Checkpoint 15's first slice (My Environment and five create forms) is committed. The second slice adds hand-written forms for a public IP address, a network security group, and a network interface. The form generator, and create forms for the other tier 1 and tier 2 entries, are still the rest of checkpoint 15 (section 6).
 
 **Decisions already made by the owner (2026-10-27, details in section 14):** the Cloud Shell runs ARM JSON only in v1 (Bicep is compiled to ARM at build time); the sandbox has switchable identities ("act as"); one tenant with a default subscription and the ability to add subscriptions and management groups; built-in roles ship only if Learn documents them, with permissions taken from the owner's own `az role definition list` export.
 
@@ -136,7 +136,7 @@ Batching tip: verification of several entries can be split across read-only suba
 | Backup & recovery (1) | Recovery Services Vault (tier 2) |
 | Networking (15) | Virtual Network, Subnet, Public IP Address, Network Security Group, Application Security Group, Route Table, Virtual Network Peering, Network Virtual Appliance, Azure DNS Zone, Private DNS Zone, Load Balancer, Service Endpoint, Private Endpoint, Network Watcher (tier 1), Azure Bastion (tier 2) |
 
-Tier 1 is behaviour, tier 2 is lifecycle, tier 3 is catalog only. The assignment is the one in `docs/SIMULATOR.md` section 7, plus the three hierarchy entries at tier 3 because they have no pinned API version in an example yet. Every existing entry is tagged `az-104`. Network Watcher is under Networking. The older resource entries do not yet list "roles that matter here". Try it is on for Resource Group, Virtual Network, Subnet, Virtual Machine, and Storage Account. Every other entry keeps the button disabled.
+Tier 1 is behaviour, tier 2 is lifecycle, tier 3 is catalog only. The assignment is the one in `docs/SIMULATOR.md` section 7, plus the three hierarchy entries at tier 3 because they have no pinned API version in an example yet. Every existing entry is tagged `az-104`. Network Watcher is under Networking. The older resource entries do not yet list "roles that matter here". Try it is on for Resource Group, Virtual Network, Subnet, Public IP Address, Network Security Group, Virtual Machine, and Storage Account. A network interface can be created from My Environment; it has no catalog page. Every other entry keeps the button disabled.
 
 ## 6. Roadmap
 
@@ -146,7 +146,7 @@ Reordered 2026-10-25. Each checkpoint ends with the checks in section 3 and a co
 
 ### Done
 
-Checkpoints 1-14 (see the status log in section 9). Checkpoint 15's first slice is in the working tree and not committed yet.
+Checkpoints 1-14 (see the status log in section 9). Checkpoint 15's first slice is committed. The second slice is in the working tree and not committed yet.
 
 ### Finished in checkpoints 10, 11 and 12
 
@@ -177,9 +177,12 @@ Checkpoints 1-14 (see the status log in section 9). Checkpoint 15's first slice 
 - Tag name checks that Learn states and the engine did not yet enforce (forbidden characters, storage 128, DNS 15). Locks were already enforced. Catalog entries for Tag, Resource lock, Policy definition, and Policy assignment.
 - Append, modify, initiatives, exemptions, and custom policy rules are not simulated.
 
-**Checkpoint 15 - Create pages ("Try it"), first slice** *(in the working tree, 2026-11-04, not committed)*
+**Checkpoint 15 - Create pages ("Try it"), first slice** *(done, 2026-11-04, `5bd4c1a`, naming examples `3379c7d`)*
 - My Environment at `/sandbox/`, saved in the existing `localStorage` envelope. Hand-written create forms for a resource group, virtual network, subnet, virtual machine, and storage account. The page shows the engine's refusal, including the step and the Learn link.
 - The catalog loads the engine only from those sandbox pages, with a dynamic import. Other entries keep Try it disabled.
+
+**Checkpoint 15 - second slice** *(in the working tree, 2026-11-04, not committed)*
+- Hand-written create forms for a public IP address, a network security group, and a network interface. The public IP records Standard and Static, and refuses a DNS label already used in that region. The network security group is the create page only: no rules and no subnet association. The network interface is recorded on a subnet and is not attached to a VM. It has no catalog page.
 
 ### Next
 
@@ -262,7 +265,7 @@ These were starting points, not verified facts.
 | 12 | Engine core (world, hierarchy, create/update/delete, names, CIDR, VM power, locks). No UI. | Done | `bd45c75` |
 | 13 | Directory, RBAC evaluator, built-in roles, seven catalog entries. No Try it page. | Done | `76c3395` |
 | 14 | Tags, locks, and deny/audit Policy, plus four catalog entries. | Done | `5383ef5` |
-| 15 | Try it for five resources, plus My Environment. Generator and the other forms still to do. | In the working tree, not committed | |
+| 15 | Try it. First slice: five resources and My Environment. Second slice: public IP, network security group, network interface. Generator and the other forms still to do. | Second slice in the working tree | `5bd4c1a` |
 | 16-20 | See roadmap in section 6 | Not started | |
 
 Docs-only commits: `71121bf` (first plan), `0c9ad5d` (roadmap reorder), `c0458c1` (plan refresh, real README, agent notes, backlog).

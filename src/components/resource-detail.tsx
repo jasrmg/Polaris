@@ -180,7 +180,7 @@ export function ResourceDetail({ resource, onOpenResource }: ResourceDetailProps
                 Try it
               </Button>
               <span className="text-xs text-muted-foreground">
-                Try it is on for a resource group, virtual network, subnet, virtual machine, and storage account.
+                Try it is on for a resource group, virtual network, subnet, public IP address, network security group, network interface, virtual machine, and storage account.
               </span>
             </>
           )}

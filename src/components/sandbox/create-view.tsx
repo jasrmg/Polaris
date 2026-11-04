@@ -16,10 +16,26 @@ const fieldClass = "grid gap-1 text-sm";
 const selectClass =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
+function nameLabel(slug: TrySlug): string {
+  if (slug === "resource-group") return "Resource group name";
+  if (slug === "virtual-machine") return "Virtual machine name";
+  if (slug === "network-interface") return "Network interface name";
+  return "Name";
+}
+
+function subnetOptionLabel(id: string, name: string): string {
+  const parts = id.split("/");
+  const vnet = parts[parts.indexOf("virtualNetworks") + 1];
+  return vnet ? `${vnet} / ${name}` : name;
+}
+
 const NAME_PLACEHOLDER: Record<TrySlug, string> = {
   "resource-group": "rg-polaris-demo",
   "virtual-network": "vnet-sea",
   subnet: "snet-app",
+  "public-ip-address": "pip-web-01",
+  "network-security-group": "nsg-web",
+  "network-interface": "nic-web-01",
   "virtual-machine": "vm-web-01",
   "storage-account": "stpolarisdemo001",
 };
@@ -37,9 +53,21 @@ const COPY: Record<TrySlug, { title: string; lead: string }> = {
     title: "Create a subnet",
     lead: "The portal asks for a name, a starting address, and a size. Enter them here as one prefix, such as 10.0.1.0/24.",
   },
+  "public-ip-address": {
+    title: "Create a public IP address",
+    lead: "The portal asks for a resource group, a region, a name, and the Standard SKU. This slice records Standard and Static. It does not attach the address to a network interface.",
+  },
+  "network-security-group": {
+    title: "Create a network security group",
+    lead: "The portal's create page asks for a resource group, a name, and a region. Inbound rules and associating a subnet come after that, and this slice does not record them.",
+  },
+  "network-interface": {
+    title: "Create a network interface",
+    lead: "The portal creates this with the virtual machine. Here it is recorded on its own, in the subnet you pick, with a dynamic private address. It is not attached to a virtual machine or a public IP.",
+  },
   "virtual-machine": {
     title: "Create a virtual machine",
-    lead: "The portal asks for a resource group, a name, a region, and an image. This slice records the VM and its power state. It does not create a network interface, a disk, or an administrator key.",
+    lead: "The portal asks for a resource group, a name, a region, and an image. This slice records the VM and its power state. It does not attach a network interface, a disk, or an administrator key.",
   },
   "storage-account": {
     title: "Create a storage account",
@@ -58,6 +86,8 @@ export function CreateView({ slug }: { slug: TrySlug }) {
   const [group, setGroup] = useState("");
   const [address, setAddress] = useState(slug === "subnet" ? "10.0.1.0/24" : "10.0.0.0/16");
   const [os, setOs] = useState<"Linux" | "Windows">("Linux");
+  const [dnsLabel, setDnsLabel] = useState("");
+  const [subnetId, setSubnetId] = useState("");
 
   const groups = useMemo(
     () => (session.world ? Object.values(session.world.resourceGroups).sort((a, b) => a.name.localeCompare(b.name)) : []),
@@ -74,6 +104,15 @@ export function CreateView({ slug }: { slug: TrySlug }) {
   }, [session.world, selectedGroup]);
   const [vnet, setVnet] = useState("");
   const selectedVnet = vnet || vnets[0]?.name || "";
+  const subnets = useMemo(() => {
+    if (!session.world) return [];
+    return Object.values(session.world.resources).filter(
+      (resource) =>
+        resource.type.toLowerCase() === "microsoft.network/virtualnetworks/subnets" &&
+        resource.resourceGroup.toLowerCase() === selectedGroup.toLowerCase(),
+    );
+  }, [session.world, selectedGroup]);
+  const selectedSubnet = subnets.find((item) => item.id === subnetId) ?? subnets[0];
 
   if (!session.ready) {
     return <p className="text-sm text-muted-foreground">Loading the simulated subscription…</p>;
@@ -91,6 +130,7 @@ export function CreateView({ slug }: { slug: TrySlug }) {
   const needsGroup = slug !== "resource-group";
   const missingGroup = needsGroup && groups.length === 0;
   const missingVnet = slug === "subnet" && vnets.length === 0;
+  const missingSubnet = slug === "network-interface" && subnets.length === 0;
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -118,6 +158,55 @@ export function CreateView({ slug }: { slug: TrySlug }) {
           parentName: selectedVnet,
           location: parent?.location ?? location,
           properties: { addressPrefix: address.trim() },
+        });
+      }
+      if (slug === "public-ip-address") {
+        const label = dnsLabel.trim();
+        return engine.createResource(world, {
+          armType: "Microsoft.Network/publicIPAddresses",
+          name: name.trim(),
+          resourceGroup: selectedGroup,
+          location,
+          sku: { name: "Standard" },
+          properties: {
+            publicIPAllocationMethod: "Static",
+            publicIPAddressVersion: "IPv4",
+            ...(label ? { dnsSettings: { domainNameLabel: label } } : {}),
+          },
+        });
+      }
+      if (slug === "network-security-group") {
+        return engine.createResource(world, {
+          armType: "Microsoft.Network/networkSecurityGroups",
+          name: name.trim(),
+          resourceGroup: selectedGroup,
+          location,
+        });
+      }
+      if (slug === "network-interface") {
+        if (!selectedSubnet) {
+          return {
+            ok: false,
+            trace: [],
+            error: { code: "SubnetRequired", message: "Choose a subnet first.", step: "validate" },
+          };
+        }
+        return engine.createResource(world, {
+          armType: "Microsoft.Network/networkInterfaces",
+          name: name.trim(),
+          resourceGroup: selectedGroup,
+          location: selectedSubnet.location,
+          properties: {
+            ipConfigurations: [
+              {
+                name: "ipconfig1",
+                properties: {
+                  privateIPAllocationMethod: "Dynamic",
+                  subnet: { id: selectedSubnet.id },
+                },
+              },
+            ],
+          },
         });
       }
       if (slug === "virtual-machine") {
@@ -154,8 +243,8 @@ export function CreateView({ slug }: { slug: TrySlug }) {
         <h1 className="text-2xl font-semibold tracking-tight">{copy.title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{copy.lead}</p>
         <p className="mt-2 text-sm">
-          <Link href={resourcePath(slug)} className="text-primary underline-offset-4 hover:underline">
-            Read the catalog entry
+          <Link href={resourcePath(slug === "network-interface" ? "virtual-machine" : slug)} className="text-primary underline-offset-4 hover:underline">
+            {slug === "network-interface" ? "Read the virtual machine entry" : "Read the catalog entry"}
           </Link>
           {" · "}
           <Link href={sandboxHomePath()} className="text-primary underline-offset-4 hover:underline">
@@ -176,7 +265,7 @@ export function CreateView({ slug }: { slug: TrySlug }) {
                 Create a <Link href="/sandbox/resource-group/" className="text-primary underline-offset-4 hover:underline">resource group</Link> first.
               </span>
             ) : (
-              <select className={selectClass} value={selectedGroup} onChange={(event) => { setGroup(event.target.value); setVnet(""); }}>
+              <select className={selectClass} value={selectedGroup} onChange={(event) => { setGroup(event.target.value); setVnet(""); setSubnetId(""); }}>
                 {groups.map((item) => (
                   <option key={item.id} value={item.name}>{item.name}</option>
                 ))}
@@ -200,8 +289,28 @@ export function CreateView({ slug }: { slug: TrySlug }) {
             )}
           </label>
         )}
+        {slug === "network-interface" && (
+          <label className={fieldClass}>
+            Subnet
+            {subnets.length === 0 ? (
+              <span className="text-muted-foreground">
+                Create a <Link href="/sandbox/subnet/" className="text-primary underline-offset-4 hover:underline">subnet</Link> in this resource group first.
+              </span>
+            ) : (
+              <select
+                className={selectClass}
+                value={selectedSubnet?.id ?? ""}
+                onChange={(event) => setSubnetId(event.target.value)}
+              >
+                {subnets.map((item) => (
+                  <option key={item.id} value={item.id}>{subnetOptionLabel(item.id, item.name)}</option>
+                ))}
+              </select>
+            )}
+          </label>
+        )}
         <label className={fieldClass}>
-          {slug === "resource-group" ? "Resource group name" : slug === "virtual-machine" ? "Virtual machine name" : "Name"}
+          {nameLabel(slug)}
           <Input
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -210,7 +319,7 @@ export function CreateView({ slug }: { slug: TrySlug }) {
             placeholder={NAME_PLACEHOLDER[slug]}
           />
         </label>
-        {slug !== "subnet" && (
+        {slug !== "subnet" && slug !== "network-interface" && (
           <label className={fieldClass}>
             Region
             <select className={selectClass} value={location} onChange={(event) => setLocation(event.target.value)}>
@@ -235,6 +344,16 @@ export function CreateView({ slug }: { slug: TrySlug }) {
             </select>
           </label>
         )}
+        {slug === "public-ip-address" && (
+          <label className={fieldClass}>
+            DNS name label
+            <Input value={dnsLabel} onChange={(event) => setDnsLabel(event.target.value)} autoComplete="off" placeholder="polaris-web-01" />
+            <span className="text-muted-foreground">Optional. The sandbox only checks that the label is free in this region.</span>
+          </label>
+        )}
+        {slug === "public-ip-address" && (
+          <p className="text-sm text-muted-foreground">SKU Standard, assignment Static. Recorded only. The portal also asks for a tier and an availability zone.</p>
+        )}
         {slug === "storage-account" && (
           <p className="text-sm text-muted-foreground">Performance Standard, redundancy LRS. Recorded only.</p>
         )}
@@ -249,7 +368,7 @@ export function CreateView({ slug }: { slug: TrySlug }) {
             )}
           </div>
         )}
-        <Button type="submit" disabled={pending || missingGroup || missingVnet || !name.trim()}>
+        <Button type="submit" disabled={pending || missingGroup || missingVnet || missingSubnet || !name.trim() || (slug === "network-interface" && !selectedSubnet)}>
           {pending ? "Creating…" : "Create"}
         </Button>
       </form>

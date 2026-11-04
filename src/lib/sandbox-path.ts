@@ -3,6 +3,9 @@ export const TRY_SLUGS = [
   "resource-group",
   "virtual-network",
   "subnet",
+  "public-ip-address",
+  "network-security-group",
+  "network-interface",
   "virtual-machine",
   "storage-account",
 ] as const;
