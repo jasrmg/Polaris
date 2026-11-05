@@ -79,6 +79,44 @@ function provisioningTone(state: string): "healthy" | "failed" | "neutral" {
   return "neutral";
 }
 
+function CheckForm({
+  label,
+  note,
+  result,
+  onSubmit,
+}: {
+  label: string;
+  note: string;
+  result?: InboundCheck & { details: string[] };
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form className="grid gap-2" onSubmit={onSubmit}>
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <label className="grid min-w-0 gap-1 text-sm">
+          {label}
+          <Input name="port" type="number" defaultValue={443} />
+        </label>
+        <Button type="submit" size="sm">Check</Button>
+      </div>
+      <p className="text-xs text-muted-foreground">{note}</p>
+      {result && (
+        <div className="rounded-lg border p-3 text-sm">
+          <p className={result.allowed ? "text-emerald-800 dark:text-emerald-300" : undefined}>{result.summary}</p>
+          <ul className="mt-2 grid gap-1 text-xs text-muted-foreground">
+            {result.details.map((line) => (
+              <li key={line} className="min-w-0 [overflow-wrap:anywhere]">{line}</li>
+            ))}
+          </ul>
+          <a href={result.learnUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-primary underline-offset-4 hover:underline">
+            Microsoft Learn
+          </a>
+        </div>
+      )}
+    </form>
+  );
+}
+
 function powerText(state: string): string {
   if (state === "Stopped") return "Stopped (Allocated)";
   if (state === "Deallocated") return "Stopped (Deallocated)";
@@ -152,11 +190,13 @@ export function EnvironmentView() {
     }));
   }
 
-  function checkInbound(vmId: string, event: FormEvent<HTMLFormElement>) {
+    function checkTraffic(vmId: string, direction: "in" | "out", event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!session.engine || !session.world) return;
     const port = Number(new FormData(event.currentTarget).get("port"));
-    const result = session.engine.checkInboundInternet(session.world, vmId, port);
+    const result = direction === "in"
+      ? session.engine.checkInboundInternet(session.world, vmId, port)
+      : session.engine.checkOutboundInternet(session.world, vmId, port);
     if (!result.ok || !result.value) {
       setError(result.error ?? { code: "Failed", message: "The check could not run.", step: "validate" });
       return;
@@ -164,7 +204,7 @@ export function EnvironmentView() {
     setError(null);
     setChecks((current) => ({
       ...current,
-      [vmId]: {
+      [`${vmId}:${direction}`]: {
         ...result.value!,
         details: result.trace.flatMap((line) => line.detail ? [line.detail] : []),
       },
@@ -311,33 +351,20 @@ export function EnvironmentView() {
                             )
                           )}
                           {isVm && (
-                            <form className="mt-3 grid gap-2" onSubmit={(event) => checkInbound(resource.id, event)}>
-                              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                                <label className="grid min-w-0 gap-1 text-sm">
-                                  Inbound from the internet, destination port
-                                  <Input name="port" type="number" defaultValue={443} />
-                                </label>
-                                <Button type="submit" size="sm">Check</Button>
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                A new TCP connection to the public IP. The subnet network security group is checked first. Routes, peering, and DNS are not part of this check.
-                              </p>
-                              {checks[resource.id] && (
-                                <div className="rounded-lg border p-3 text-sm">
-                                  <p className={checks[resource.id].allowed ? "text-emerald-800 dark:text-emerald-300" : undefined}>
-                                    {checks[resource.id].summary}
-                                  </p>
-                                  <ul className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                                    {checks[resource.id].details.map((line) => (
-                                      <li key={line} className="min-w-0 [overflow-wrap:anywhere]">{line}</li>
-                                    ))}
-                                  </ul>
-                                  <a href={checks[resource.id].learnUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-primary underline-offset-4 hover:underline">
-                                    Microsoft Learn
-                                  </a>
-                                </div>
-                              )}
-                            </form>
+                            <div className="mt-3 grid gap-4">
+                              <CheckForm
+                                label="Inbound from the internet, destination port"
+                                note="A new TCP connection to the public IP. The subnet network security group is checked first. Routes, peering, and DNS are not part of this check."
+                                result={checks[`${resource.id}:in`]}
+                                onSubmit={(event) => checkTraffic(resource.id, "in", event)}
+                              />
+                              <CheckForm
+                                label="Outbound to the internet, destination port"
+                                note="A new TCP connection from the virtual machine to the internet. The network interface is checked first. An inbound rule does not decide this."
+                                result={checks[`${resource.id}:out`]}
+                                onSubmit={(event) => checkTraffic(resource.id, "out", event)}
+                              />
+                            </div>
                           )}
                           {isNic && (
                             publicIps.length === 0 ? (

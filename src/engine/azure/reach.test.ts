@@ -5,12 +5,29 @@ import {
   attachNetworkInterface,
   attachPublicIp,
   checkInboundInternet,
+  checkOutboundInternet,
   createResource,
   createResourceGroup,
   starterWorld,
   updateResource,
 } from "./index";
 import type { World } from "./types";
+
+function outboundRule(name: string, access: "Allow" | "Deny", priority: number) {
+  return {
+    name,
+    properties: {
+      priority,
+      direction: "Outbound",
+      access,
+      protocol: "Tcp",
+      sourceAddressPrefix: "*",
+      sourcePortRange: "*",
+      destinationAddressPrefix: "Internet",
+      destinationPortRange: "443",
+    },
+  };
+}
 
 function must<T>(result: { ok: boolean; value?: T; error?: { message: string } }): T {
   assert.equal(result.ok, true, result.error?.message);
@@ -135,6 +152,54 @@ describe("inbound internet check", () => {
     const both = checkInboundInternet(world, again.vmId, 443);
     assert.equal(both.value?.allowed, false);
     assert.match(both.value?.summary ?? "", /securityRules\/Deny-443-Inbound-200/);
+  });
+
+  it("allows outbound when no security group exists, and ignores an inbound deny", () => {
+    const { world, vmId } = linkedWorld();
+    const open = checkOutboundInternet(world, vmId, 443);
+    assert.equal(open.ok, true, open.error?.message);
+    assert.equal(open.value?.allowed, true);
+    assert.match(open.value?.summary ?? "", /not filtered/);
+    assert.equal((open.value?.summary ?? "").includes("AllowInternetOutBound"), false);
+
+    const { world: ruledWorld, vmId: ruledVm, subnetId, nsgId } = linkedWorld();
+    const ruled = must(addInboundRule(ruledWorld, subnetId, nsgId, { port: 443, access: "Deny", priority: 100 }));
+    const inbound = checkInboundInternet(ruled, ruledVm, 443);
+    assert.equal(inbound.value?.allowed, false);
+    const outbound = checkOutboundInternet(ruled, ruledVm, 443);
+    assert.equal(outbound.value?.allowed, true);
+    assert.match(outbound.value?.summary ?? "", /defaultSecurityRules\/AllowInternetOutBound, priority 65001/);
+  });
+
+  it("checks the network interface before the subnet on the way out", () => {
+    const { world, vmId, nicId, subnetId, nsgId } = linkedWorld();
+    const associated = must(addInboundRule(world, subnetId, nsgId, { port: 80, access: "Allow", priority: 100 }));
+    const nicNsg = must(createResource(associated, {
+      armType: "Microsoft.Network/networkSecurityGroups",
+      name: "nsg-nic",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+    }));
+    const nicNsgId = Object.values(nicNsg.resources).find((resource) => resource.name === "nsg-nic")!.id;
+    const withRule = must(updateResource(nicNsg, nicNsgId, {
+      properties: {
+        securityRules: [outboundRule("Deny-443-Outbound-100", "Deny", 100)],
+      },
+    }));
+    const attached = must(updateResource(withRule, nicId, { properties: { networkSecurityGroupId: nicNsgId } }));
+    const denied = checkOutboundInternet(attached, vmId, 443);
+    assert.equal(denied.value?.allowed, false);
+    assert.match(denied.value?.summary ?? "", /securityRules\/Deny-443-Outbound-100/);
+    assert.match(denied.trace.map((line) => line.detail ?? "").join("\n"), /subnet does not see it/);
+
+    const subnetDeny = must(updateResource(associated, nsgId, {
+      properties: {
+        securityRules: [outboundRule("Deny-443-Outbound-110", "Deny", 110)],
+      },
+    }));
+    const fromSubnet = checkOutboundInternet(subnetDeny, vmId, 443);
+    assert.equal(fromSubnet.value?.allowed, false);
+    assert.match(fromSubnet.value?.summary ?? "", /securityRules\/Deny-443-Outbound-110/);
   });
 
   it("refuses a port outside 1 to 65535 and does not change the world", () => {

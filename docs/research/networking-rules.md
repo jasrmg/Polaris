@@ -1,6 +1,6 @@
 # Azure networking rules for the Polaris reachability checker
 
-**Status:** research output for roadmap checkpoint 16 (networking behaviour and reachability checker). The first slice evaluates one new inbound TCP connection from the internet to a virtual machine's public IP. The rest of this file is still research.
+**Status:** research output for roadmap checkpoint 16 (networking behaviour and reachability checker). The checker answers two questions: a new inbound TCP connection from the internet to a virtual machine's public IP, and a new outbound TCP connection from that virtual machine to the internet. The rest of this file is still research.
 **Accessed:** 2026-10-27 (all URLs fetched that day, `en-us` locale).
 **Sources:** `learn.microsoft.com` only (docs, REST reference, Learn training). No third-party pages were used.
 **Method:** every fact below carries a source ID such as `[S1]`. The ID table is in section 9. If a fact could not be verified, it is tagged `[Unverified]`. If two Learn pages disagree, it is tagged `[Conflict]`. A choice the owner should make is tagged `[Decision]`.
