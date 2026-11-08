@@ -8,6 +8,7 @@ import {
   attachPublicIp,
   checkInboundInternet,
   checkOutboundInternet,
+  checkSameVirtualNetwork,
   createResource,
   deleteResource,
   createResourceGroup,
@@ -15,6 +16,22 @@ import {
   updateResource,
 } from "./index";
 import type { World } from "./types";
+
+function vnetRule(name: string, direction: "Inbound" | "Outbound", priority: number) {
+  return {
+    name,
+    properties: {
+      priority,
+      direction,
+      access: "Deny" as const,
+      protocol: "Tcp",
+      sourceAddressPrefix: "VirtualNetwork",
+      sourcePortRange: "*",
+      destinationAddressPrefix: "VirtualNetwork",
+      destinationPortRange: "443",
+    },
+  };
+}
 
 function outboundRule(name: string, access: "Allow" | "Deny", priority: number) {
   return {
@@ -225,6 +242,81 @@ describe("inbound internet check", () => {
     const low = addSecurityRule(ruled, nsgId, { direction: "Outbound", port: 443, access: "Deny", priority: 50 });
     assert.equal(low.ok, false);
     assert.equal(low.error?.code, "InvalidPriority");
+  });
+
+  it("allows a private address in the virtual network, and ignores an internet rule", () => {
+    const { world, vmId } = linkedWorld();
+    const open = checkSameVirtualNetwork(world, vmId, "10.0.1.4", 443);
+    assert.equal(open.ok, true, open.error?.message);
+    assert.equal(open.value?.allowed, true);
+    assert.match(open.value?.summary ?? "", /not filtered/);
+
+    const { world: ruledWorld, vmId: ruledVm, subnetId, nsgId } = linkedWorld();
+    const inbound = must(addInboundRule(ruledWorld, subnetId, nsgId, { port: 443, access: "Deny", priority: 100 }));
+    const ruled = must(addSecurityRule(inbound, nsgId, { direction: "Outbound", port: 443, access: "Deny", priority: 100 }));
+    const checked = checkSameVirtualNetwork(ruled, ruledVm, "10.0.1.4", 443);
+    assert.equal(checked.value?.allowed, true);
+    assert.match(checked.value?.summary ?? "", /defaultSecurityRules\/AllowVNetInBound, priority 65000/);
+    const trace = checked.trace.map((line) => line.detail ?? "").join("\n");
+    assert.match(trace, /AllowVnetOutBound/);
+    assert.match(trace, /private IP is not recorded/);
+    assert.equal(trace.includes("Deny-443"), false);
+
+    const before = JSON.stringify(world);
+    const outside = checkSameVirtualNetwork(world, vmId, "8.8.8.8", 443);
+    assert.equal(outside.ok, false);
+    assert.equal(outside.error?.code, "AddressOutsideVnet");
+    assert.match(outside.error?.next ?? "", /inside this virtual network/);
+    const gap = checkSameVirtualNetwork(world, vmId, "10.0.9.4", 443);
+    assert.equal(gap.error?.code, "AddressOutsideSubnet");
+    assert.match(gap.error?.next ?? "", /10\.0\.1\.0\/24/);
+    const bad = checkSameVirtualNetwork(world, vmId, "nope", 443);
+    assert.equal(bad.error?.code, "InvalidAddress");
+    assert.equal(JSON.stringify(world), before);
+  });
+
+  it("denies virtual network traffic at the first group that matches", () => {
+    const { world, vmId, nicId, subnetId, nsgId } = linkedWorld();
+    const associated = must(addInboundRule(world, subnetId, nsgId, { port: 80, access: "Allow", priority: 100 }));
+    const nicNsg = must(createResource(associated, {
+      armType: "Microsoft.Network/networkSecurityGroups",
+      name: "nsg-nic",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+    }));
+    const nicNsgId = Object.values(nicNsg.resources).find((resource) => resource.name === "nsg-nic")!.id;
+    const withRule = must(updateResource(nicNsg, nicNsgId, {
+      properties: { securityRules: [vnetRule("Deny-443-Outbound-100", "Outbound", 100)] },
+    }));
+    const attached = must(updateResource(withRule, nicId, { properties: { networkSecurityGroupId: nicNsgId } }));
+    const denied = checkSameVirtualNetwork(attached, vmId, "10.0.1.4", 443);
+    assert.equal(denied.value?.allowed, false);
+    assert.match(denied.value?.summary ?? "", /securityRules\/Deny-443-Outbound-100/);
+    assert.match(denied.trace.map((line) => line.detail ?? "").join("\n"), /destination does not see it/);
+
+    const other = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks/subnets",
+      name: "snet-db",
+      resourceGroup: "rg-demo",
+      parentName: "vnet-sea",
+      location: "southeastasia",
+      properties: { addressPrefix: "10.0.2.0/24" },
+    }));
+    const dbId = Object.values(other.resources).find((resource) => resource.name === "snet-db")!.id;
+    const dbNsg = must(createResource(other, {
+      armType: "Microsoft.Network/networkSecurityGroups",
+      name: "nsg-db",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+    }));
+    const dbNsgId = Object.values(dbNsg.resources).find((resource) => resource.name === "nsg-db")!.id;
+    const dbRuled = must(updateResource(dbNsg, dbNsgId, {
+      properties: { securityRules: [vnetRule("Deny-443-Inbound-100", "Inbound", 100)] },
+    }));
+    const linked = must(updateResource(dbRuled, dbId, { properties: { networkSecurityGroupId: dbNsgId } }));
+    const fromApp = checkSameVirtualNetwork(linked, vmId, "10.0.2.4", 443);
+    assert.equal(fromApp.value?.allowed, false);
+    assert.match(fromApp.value?.summary ?? "", /securityRules\/Deny-443-Inbound-100/);
   });
 
   it("puts a network security group on the network interface and blocks deleting it", () => {

@@ -1,14 +1,18 @@
 /**
- * Two reachability questions, each for one TCP port.
+ * Three reachability questions, each for one TCP port.
  * Inbound: from the internet to a virtual machine's public IP. Subnet network
  * security group first, then the network interface.
  * Outbound: from the virtual machine to the internet. Network interface first,
  * then the subnet. An inbound rule is not consulted.
- * Routes, peering, DNS, and appliances are not part of either check.
- * Sources: docs/research/networking-rules.md sections 1.1–1.4 and decision N1.
+ * Same virtual network: to one IPv4 address inside the virtual network. The way
+ * out is checked first, then the destination subnet on the way in. A private IP
+ * is not recorded on a network interface, so that group is not checked.
+ * Routes, peering, DNS, appliances, and power state are not part of these checks.
+ * Sources: docs/research/networking-rules.md sections 1.1–1.4 and 1.8, decision N1.
  */
 
 import { failure, success, type Result, type TraceLine } from "../core/result";
+import { containsCidr, parseCidr } from "./cidr";
 import { canonicalId } from "./ids";
 import { LEARN } from "./learn";
 import type { Resource, World } from "./types";
@@ -20,6 +24,7 @@ export interface InboundCheck {
 }
 
 type Flow = "inbound" | "outbound";
+type Scope = "internet" | "vnet";
 
 interface Rule {
   name: string;
@@ -106,6 +111,8 @@ const DEFAULT_OUTBOUND: Rule[] = [
 ];
 
 const NOT_FILTERED = "Allowed. No network security group on the network interface or the subnet, so this outbound flow is not filtered.";
+const VNET_NOT_FILTERED = "Allowed. No network security group on the way out or on the destination subnet, so this virtual network flow is not filtered.";
+const NIC_UNRECORDED = "A private IP is not recorded on a network interface, so that network security group is not checked.";
 
 export function checkInboundInternet(world: World, vmId: string, port: number): Result<InboundCheck> {
   const opened = openPath(world, vmId, port, "Inbound TCP from the internet.");
@@ -188,6 +195,99 @@ export function checkOutboundInternet(world: World, vmId: string, port: number):
   return answered(trace, matched.access === "Allow", verdict(matched), LEARN.nsgOverview);
 }
 
+export function checkSameVirtualNetwork(world: World, vmId: string, address: string, port: number): Result<InboundCheck> {
+  const opened = openPath(world, vmId, port, "TCP to an address in the same virtual network.");
+  if (isResult(opened)) return opened;
+  const { trace, vm, nic, subnet } = opened;
+  const destination = parseHost(address);
+  if (!destination) {
+    return failure(trace, {
+      code: "InvalidAddress",
+      message: "Record one IPv4 address. (sandbox wording)",
+      step: "validate",
+      learnUrl: LEARN.vnet,
+      next: "Enter an address such as 10.0.1.4.",
+    });
+  }
+  const vnet = parentVirtualNetwork(world, subnet);
+  if (!vnet) {
+    return answered(trace, false, `${subnet.name} is not in a virtual network. (sandbox wording)`, LEARN.vnet);
+  }
+  const vnetPrefixes = prefixesOf(vnet);
+  if (!vnetPrefixes.some((prefix) => prefixContains(prefix, destination))) {
+    return failure(trace, {
+      code: "AddressOutsideVnet",
+      message: `${destination} is outside ${vnet.name}. (sandbox wording)`,
+      step: "validate",
+      learnUrl: LEARN.vnet,
+      next: "Enter an address inside this virtual network.",
+    });
+  }
+  const destinationSubnet = subnetsOf(world, vnet).find((item) => {
+    const prefix = item.properties.addressPrefix;
+    return typeof prefix === "string" && prefixContains(prefix, destination);
+  });
+  if (!destinationSubnet) {
+    const prefixes = subnetsOf(world, vnet)
+      .map((item) => item.properties.addressPrefix)
+      .filter((prefix): prefix is string => typeof prefix === "string");
+    return failure(trace, {
+      code: "AddressOutsideSubnet",
+      message: `${destination} is inside ${vnet.name}, and no subnet contains it. (sandbox wording)`,
+      step: "validate",
+      learnUrl: LEARN.subnet,
+      next: prefixes.length > 0 ? `Enter an address inside ${prefixes.join(" or ")}.` : "Add a subnet that contains this address.",
+    });
+  }
+  trace.push({
+    step: "validate",
+    ok: true,
+    detail: `${vm.name} uses ${nic.name}. Destination ${destination} is in ${destinationSubnet.name}. Port ${port}.`,
+  });
+
+  const sourceNicNsg = attachedNsg(world, nic);
+  const sourceSubnetNsg = attachedNsg(world, subnet);
+  let sourceVerdict: string | null = null;
+  if (!sourceNicNsg && !sourceSubnetNsg) {
+    trace.push({ step: "apply", ok: true, detail: `No network security group on ${nic.name}. No NSG at this layer.` });
+    trace.push({ step: "apply", ok: true, detail: `No network security group on ${subnet.name}. No NSG at this layer.` });
+  } else {
+    if (!sourceNicNsg) {
+      trace.push({ step: "apply", ok: true, detail: `No network security group on ${nic.name}. No NSG at this layer.` });
+    } else {
+      const matched = firstMatch(sourceNicNsg, port, "outbound", "vnet");
+      trace.push({ step: "apply", ok: true, detail: `${nic.name} uses ${sourceNicNsg.name}. ${ruleLine(matched)}` });
+      if (matched.access === "Deny") {
+        trace.push({ step: "apply", ok: true, detail: "The network interface denied the traffic. The destination does not see it." });
+        return answered(trace, false, verdict(matched), LEARN.nsgOverview);
+      }
+      sourceVerdict = verdict(matched);
+    }
+    if (!sourceSubnetNsg) {
+      trace.push({ step: "apply", ok: true, detail: `No network security group on ${subnet.name}. No NSG at this layer.` });
+    } else {
+      const matched = firstMatch(sourceSubnetNsg, port, "outbound", "vnet");
+      trace.push({ step: "apply", ok: true, detail: `${subnet.name} uses ${sourceSubnetNsg.name}. ${ruleLine(matched)}` });
+      if (matched.access === "Deny") {
+        trace.push({ step: "apply", ok: true, detail: "The subnet denied the traffic on the way out. The destination does not see it." });
+        return answered(trace, false, verdict(matched), LEARN.nsgOverview);
+      }
+      sourceVerdict = verdict(matched);
+    }
+  }
+
+  const destinationNsg = attachedNsg(world, destinationSubnet);
+  if (!destinationNsg) {
+    trace.push({ step: "apply", ok: true, detail: `No network security group on ${destinationSubnet.name}. No NSG at this layer.` });
+    trace.push({ step: "apply", ok: true, detail: NIC_UNRECORDED });
+    return answered(trace, true, sourceVerdict ?? VNET_NOT_FILTERED, LEARN.nsgHowItWorks);
+  }
+  const matched = firstMatch(destinationNsg, port, "inbound", "vnet");
+  trace.push({ step: "apply", ok: true, detail: `${destinationSubnet.name} uses ${destinationNsg.name}. ${ruleLine(matched)}` });
+  trace.push({ step: "apply", ok: true, detail: NIC_UNRECORDED });
+  return answered(trace, matched.access === "Allow", verdict(matched), LEARN.nsgOverview);
+}
+
 function openPath(world: World, vmId: string, port: number, detail: string): Path | Result<InboundCheck> {
   const trace: TraceLine[] = [{ step: "parse", ok: true, detail }];
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -235,10 +335,10 @@ function attachedNsg(world: World, resource: Resource): Resource | undefined {
   return id ? world.resources[canonicalId(id)] : undefined;
 }
 
-function firstMatch(nsg: Resource, port: number, flow: Flow): Rule {
+function firstMatch(nsg: Resource, port: number, flow: Flow, scope: Scope = "internet"): Rule {
   const defaults = flow === "inbound" ? DEFAULT_INBOUND : DEFAULT_OUTBOUND;
   const rules = [...customRules(nsg, flow), ...defaults].sort((left, right) => left.priority - right.priority);
-  return rules.find((rule) => ruleMatches(rule, port, flow)) ?? defaults[defaults.length - 1];
+  return rules.find((rule) => ruleMatches(rule, port, flow, scope)) ?? defaults[defaults.length - 1];
 }
 
 function customRules(nsg: Resource, flow: Flow): Rule[] {
@@ -269,16 +369,49 @@ function customRules(nsg: Resource, flow: Flow): Rule[] {
   return rules;
 }
 
-function ruleMatches(rule: Rule, port: number, flow: Flow): boolean {
+function ruleMatches(rule: Rule, port: number, flow: Flow, scope: Scope = "internet"): boolean {
   const protocol = rule.protocol.toLowerCase();
   if (protocol !== "tcp" && protocol !== "any") return false;
-  if (flow === "inbound") {
-    if (!sourceIsInternet(rule.source) || !destinationIsPrivate(rule.destination)) return false;
-  } else if (!sourceIsPrivate(rule.source) || !destinationIsInternet(rule.destination)) {
-    return false;
-  }
+  const sourceOk = scope === "vnet" || flow === "outbound" ? sourceIsPrivate(rule.source) : sourceIsInternet(rule.source);
+  const destinationOk = scope === "vnet" || flow === "inbound" ? destinationIsPrivate(rule.destination) : destinationIsInternet(rule.destination);
+  if (!sourceOk || !destinationOk) return false;
   if (!portSpecMatches(rule.sourcePorts, null)) return false;
   return portSpecMatches(rule.destinationPorts, port);
+}
+
+function parseHost(value: string): string | null {
+  const address = value.trim();
+  const parsed = parseCidr(`${address}/32`);
+  if ("error" in parsed || parsed.prefix !== 32) return null;
+  return address;
+}
+
+function prefixContains(prefix: string, address: string): boolean {
+  const outer = parseCidr(prefix);
+  const inner = parseCidr(`${address}/32`);
+  if ("error" in outer || "error" in inner) return false;
+  return containsCidr(outer, inner);
+}
+
+function prefixesOf(vnet: Resource): string[] {
+  const space = vnet.properties.addressSpace;
+  if (!space || typeof space !== "object") return [];
+  const raw = (space as { addressPrefixes?: unknown }).addressPrefixes;
+  return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === "string") : [];
+}
+
+function parentVirtualNetwork(world: World, subnet: Resource): Resource | undefined {
+  const marker = "/subnets/";
+  const at = subnet.id.toLowerCase().lastIndexOf(marker);
+  if (at < 0) return undefined;
+  return world.resources[canonicalId(subnet.id.slice(0, at))];
+}
+
+function subnetsOf(world: World, vnet: Resource): Resource[] {
+  const prefix = `${canonicalId(vnet.id)}/subnets/`;
+  return Object.values(world.resources).filter(
+    (resource) => canonicalId(resource.id).startsWith(prefix) && resource.type.toLowerCase() === "microsoft.network/virtualnetworks/subnets",
+  );
 }
 
 function sourceIsInternet(source: string): boolean {

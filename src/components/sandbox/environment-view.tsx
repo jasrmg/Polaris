@@ -234,6 +234,25 @@ export function EnvironmentView() {
     }));
   }
 
+  function checkVnet(vmId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session.engine || !session.world) return;
+    const data = new FormData(event.currentTarget);
+    const result = session.engine.checkSameVirtualNetwork(session.world, vmId, String(data.get("address") ?? ""), Number(data.get("port")));
+    if (!result.ok || !result.value) {
+      setError(result.error ?? { code: "Failed", message: "The check could not run.", step: "validate" });
+      return;
+    }
+    setError(null);
+    setChecks((current) => ({
+      ...current,
+      [`${vmId}:vnet`]: {
+        ...result.value!,
+        details: result.trace.flatMap((line) => line.detail ? [line.detail] : []),
+      },
+    }));
+  }
+
   return (
     <div className="grid gap-6">
       <SandboxBanner />
@@ -389,6 +408,35 @@ export function EnvironmentView() {
                                 result={checks[`${resource.id}:out`]}
                                 onSubmit={(event) => checkTraffic(resource.id, "out", event)}
                               />
+                              <form className="grid gap-2" onSubmit={(event) => checkVnet(resource.id, event)}>
+                                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_auto] sm:items-end">
+                                  <label className="grid min-w-0 gap-1 text-sm">
+                                    To an address in this virtual network
+                                    <Input name="address" defaultValue="10.0.1.4" autoComplete="off" />
+                                  </label>
+                                  <label className="grid min-w-0 gap-1 text-sm">
+                                    Destination port
+                                    <Input name="port" type="number" defaultValue={443} />
+                                  </label>
+                                  <Button type="submit" size="sm">Check</Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  A new TCP connection to an address inside this virtual network. The way out is checked first, then the destination subnet. A network interface group at the destination is not checked, because a private IP is not recorded. Routes, peering, DNS, and power state are not part of this check.
+                                </p>
+                                {checks[`${resource.id}:vnet`] && (
+                                  <div className="rounded-lg border p-3 text-sm">
+                                    <p className={checks[`${resource.id}:vnet`].allowed ? "text-emerald-800 dark:text-emerald-300" : undefined}>{checks[`${resource.id}:vnet`].summary}</p>
+                                    <ul className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                                      {checks[`${resource.id}:vnet`].details.map((line, index) => (
+                                        <li key={`${index}-${line}`} className="min-w-0 [overflow-wrap:anywhere]">{line}</li>
+                                      ))}
+                                    </ul>
+                                    <a href={checks[`${resource.id}:vnet`].learnUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-primary underline-offset-4 hover:underline">
+                                      Microsoft Learn
+                                    </a>
+                                  </div>
+                                )}
+                              </form>
                             </div>
                           )}
                           {isNic && (

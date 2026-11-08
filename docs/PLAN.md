@@ -6,7 +6,7 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 ## 0. Start here (handoff summary)
 
-**Last updated:** 2026-11-08. Checkpoints 1-14 are committed (engine core `bd45c75`, directory and RBAC `76c3395`, deny and audit policy `5383ef5`). Checkpoint 15 is committed through the link slice (`5bd4c1a`, naming examples `3379c7d`, public IP, network security group, and network interface `6e243a4`, links `e7696b3`). Checkpoint 16's inbound question is committed (`1fbaaba`), the outbound question is committed (`7b7402b`), associating a network security group with a network interface is committed (`d96b197`), and one TCP rule on an existing group is committed (`d215482`). A next step on refusals the current pages can fix is in the working tree and not committed yet.
+**Last updated:** 2026-11-08. Checkpoints 1-14 are committed (engine core `bd45c75`, directory and RBAC `76c3395`, deny and audit policy `5383ef5`). Checkpoint 15 is committed through the link slice (`5bd4c1a`, naming examples `3379c7d`, public IP, network security group, and network interface `6e243a4`, links `e7696b3`). Checkpoint 16's inbound question is committed (`1fbaaba`), the outbound question is committed (`7b7402b`), associating a network security group with a network interface is committed (`d96b197`), one TCP rule on an existing group is committed (`d215482`), and a next step on refusals the current pages can fix is committed (`aeb5fb3`). A check to a private address in the same virtual network is in the working tree and not committed yet.
 
 **What we are building.** Polaris is a free, browser-only place to learn and try out Azure. It has two parts:
 
@@ -15,7 +15,7 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 **Who it is for.** The owner is studying for AZ-104 and then AZ-400, but the product is **not exam-specific**. Exams are tags and study aids. Scope is "as many Azure resources and services as possible", RBAC included. **Polaris is meant to become multi-cloud, but version 1 contains only Azure.** As the owner studies other cloud providers (AWS first, then possibly GCP or others) they will be added, only after Azure v1 ships and Azure is covered (section 10). Design choices made now should not block that: keep Azure-specific details (hierarchy levels, example formats, regions, rule packs) separable from the generic engine and content shape.
 
-**Where we are.** Checkpoints 1-14 are done and committed. Checkpoint 15 is committed through My Environment, eight create forms, and the links between a virtual machine, network interface, public IP, and a subnet network security group (`e7696b3`). Checkpoint 16 can answer a new inbound TCP connection from the internet to that public IP (`1fbaaba`) and a new outbound TCP connection to the internet (`7b7402b`). Associating an existing network security group with a network interface is committed (`d96b197`). One TCP rule on an existing group is committed (`d215482`). The working tree adds a next step under a refusal when the current page can fix it. The form generator, and create forms for the other tier 1 and tier 2 entries, are still the rest of checkpoint 15 (section 6). Routes, peering, DNS, and appliances are still the rest of checkpoint 16.
+**Where we are.** Checkpoints 1-14 are done and committed. Checkpoint 15 is committed through My Environment, eight create forms, and the links between a virtual machine, network interface, public IP, and a subnet network security group (`e7696b3`). Checkpoint 16 can answer a new inbound TCP connection from the internet to that public IP (`1fbaaba`) and a new outbound TCP connection to the internet (`7b7402b`). Associating an existing network security group with a network interface is committed (`d96b197`). One TCP rule on an existing group is committed (`d215482`). A next step under a refusal is committed (`aeb5fb3`). The working tree answers a new TCP connection to a private address in the same virtual network. The destination network interface is not checked, because a private IP is not recorded. The form generator, and create forms for the other tier 1 and tier 2 entries, are still the rest of checkpoint 15 (section 6). Routes, peering, DNS, and appliances are still the rest of checkpoint 16.
 
 **Decisions already made by the owner (2026-10-27, details in section 14):** the Cloud Shell runs ARM JSON only in v1 (Bicep is compiled to ARM at build time); the sandbox has switchable identities ("act as"); one tenant with a default subscription and the ability to add subscriptions and management groups; built-in roles ship only if Learn documents them, with permissions taken from the owner's own `az role definition list` export.
 
@@ -146,7 +146,7 @@ Reordered 2026-10-25. Each checkpoint ends with the checks in section 3 and a co
 
 ### Done
 
-Checkpoints 1-14 (see the status log in section 9). Checkpoint 15 is committed through the link slice (`e7696b3`). Checkpoint 16's inbound and outbound questions are committed (`1fbaaba`, `7b7402b`). Associating a network security group with a network interface is committed (`d96b197`). One TCP rule on an existing group is committed (`d215482`). A next step on refusals the current pages can fix is in the working tree and not committed yet.
+Checkpoints 1-14 (see the status log in section 9). Checkpoint 15 is committed through the link slice (`e7696b3`). Checkpoint 16's inbound and outbound questions are committed (`1fbaaba`, `7b7402b`). Associating a network security group with a network interface is committed (`d96b197`). One TCP rule on an existing group is committed (`d215482`). A next step on refusals the current pages can fix is committed (`aeb5fb3`). A check to a private address in the same virtual network is in the working tree and not committed yet.
 
 ### Finished in checkpoints 10, 11 and 12
 
@@ -199,8 +199,11 @@ Checkpoints 1-14 (see the status log in section 9). Checkpoint 15 is committed t
 **Checkpoint 16 - one rule on an existing group** *(done, 2026-11-08, `d215482`)*
 - From My Environment, add one TCP rule to a network security group that already exists. Inbound is from Internet to any address. Outbound is from any address to Internet. Any source port, one destination port, priority 100–4096. The same priority can be used once in each direction. This does not change which subnet or network interface uses the group. The checks already evaluate the rule.
 
-**Checkpoint 16 - what to do next** *(in the working tree, 2026-11-08, not committed)*
+**Checkpoint 16 - what to do next** *(done, 2026-11-08, `aeb5fb3`)*
 - A refusal still quotes the rule, the step, and Learn. When My Environment or a create form can fix it, a second line says what to do on that page. The line is sandbox guidance. Name rules that already state the limit do not get a second line. Refusals for screens that are not built yet do not get one either.
+
+**Checkpoint 16 - same virtual network** *(in the working tree, 2026-11-08, not committed)*
+- On the virtual machine: one IPv4 address and one port, for a new TCP connection to an address inside its virtual network. The way out is checked first, then the destination subnet on the way in. An internet rule does not decide it. With no network security group, the flow is not filtered. A private IP is not recorded on a network interface, so that group is not checked. The address has to fall inside a subnet. Routes, peering, DNS, and power state are not part of this check.
 
 ### Next
 
@@ -284,7 +287,7 @@ These were starting points, not verified facts.
 | 13 | Directory, RBAC evaluator, built-in roles, seven catalog entries. No Try it page. | Done | `76c3395` |
 | 14 | Tags, locks, and deny/audit Policy, plus four catalog entries. | Done | `5383ef5` |
 | 15 | Try it. Five resources and My Environment, then public IP, network security group, and network interface (`6e243a4`), then the links (`e7696b3`). Generator and the other forms still to do. | Links committed | `e7696b3` |
-| 16 | Reachability. Inbound (`1fbaaba`) and outbound (`7b7402b`) internet TCP. A network security group on a network interface is committed (`d96b197`). One TCP rule on an existing group is committed (`d215482`). A next step on refusals the current pages can fix is in the working tree. Routes, peering, DNS, and appliances are still to do. | Next step in the working tree | `d215482` |
+| 16 | Reachability. Inbound (`1fbaaba`) and outbound (`7b7402b`) internet TCP. A network security group on a network interface is committed (`d96b197`). One TCP rule on an existing group is committed (`d215482`). A next step on a refusal is committed (`aeb5fb3`). A private address in the same virtual network is in the working tree. Routes, peering, DNS, and appliances are still to do. | Same virtual network in the working tree | `aeb5fb3` |
 | 17-20 | See roadmap in section 6 | Not started | |
 
 Docs-only commits: `71121bf` (first plan), `0c9ad5d` (roadmap reorder), `c0458c1` (plan refresh, real README, agent notes, backlog).
