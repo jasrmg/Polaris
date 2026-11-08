@@ -64,13 +64,20 @@ function linkLines(resource: Resource, resources: Resource[], world: World): str
     if (!rule || typeof rule !== "object") continue;
     const props = (rule as { properties?: unknown }).properties;
     if (!props || typeof props !== "object") continue;
-    const fields = props as { destinationPortRange?: unknown; access?: unknown; priority?: unknown; direction?: unknown; protocol?: unknown };
+    const fields = props as {
+      destinationPortRange?: unknown;
+      sourceAddressPrefix?: unknown;
+      destinationAddressPrefix?: unknown;
+      access?: unknown;
+      priority?: unknown;
+      direction?: unknown;
+      protocol?: unknown;
+    };
     if (fields.protocol !== "Tcp") continue;
-    if (fields.direction === "Inbound") {
-      lines.push(`Inbound TCP ${String(fields.destinationPortRange)} ${String(fields.access)}, priority ${String(fields.priority)}. Source Internet.`);
-    }
-    if (fields.direction === "Outbound") {
-      lines.push(`Outbound TCP ${String(fields.destinationPortRange)} ${String(fields.access)}, priority ${String(fields.priority)}. Destination Internet.`);
+    const vnet = fields.sourceAddressPrefix === "VirtualNetwork" || fields.destinationAddressPrefix === "VirtualNetwork";
+    const where = vnet ? "Source and destination Virtual network." : fields.direction === "Outbound" ? "Destination Internet." : "Source Internet.";
+    if (fields.direction === "Inbound" || fields.direction === "Outbound") {
+      lines.push(`${fields.direction} TCP ${String(fields.destinationPortRange)} ${String(fields.access)}, priority ${String(fields.priority)}. ${where}`);
     }
   }
   return lines;
@@ -200,6 +207,7 @@ export function EnvironmentView() {
     const direction = data.get("direction") === "Inbound" ? "Inbound" : "Outbound";
     void run((engine, current) => engine.addSecurityRule(current, nsgId, {
       direction,
+      scope: data.get("scope") === "internet" ? "internet" : "vnet",
       port: Number(data.get("port")),
       priority: Number(data.get("priority")),
       access: data.get("access") === "Deny" ? "Deny" : "Allow",
@@ -479,7 +487,14 @@ export function EnvironmentView() {
                           )}
                           {isNsg && (
                             <form className="mt-3 grid gap-2" onSubmit={(event) => addRule(resource.id, event)}>
-                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Traffic
+                                  <select name="scope" className={selectClass} defaultValue="vnet">
+                                    <option value="vnet">Virtual network</option>
+                                    <option value="internet">Internet</option>
+                                  </select>
+                                </label>
                                 <label className="grid min-w-0 gap-1 text-sm">
                                   Direction
                                   <select name="direction" className={selectClass} defaultValue="Outbound">
@@ -493,7 +508,7 @@ export function EnvironmentView() {
                                 </label>
                                 <label className="grid min-w-0 gap-1 text-sm">
                                   Priority
-                                  <Input name="priority" type="number" defaultValue={100} />
+                                  <Input name="priority" type="number" defaultValue={200} />
                                 </label>
                                 <label className="grid min-w-0 gap-1 text-sm">
                                   Action
@@ -504,7 +519,7 @@ export function EnvironmentView() {
                                 </label>
                               </div>
                               <p className="text-xs text-muted-foreground">
-                                One TCP rule. Inbound is from Internet to any address. Outbound is from any address to Internet. Any source port. The same priority can be used once in each direction. This does not change which subnet or network interface uses the group.
+                                One TCP rule. Virtual network uses source and destination VirtualNetwork. Internet inbound is from Internet. Internet outbound is to Internet. Any source port. The same priority can be used once in each direction. This does not change which subnet or network interface uses the group.
                               </p>
                               <Button type="submit" size="sm" className="w-fit">Add rule</Button>
                             </form>

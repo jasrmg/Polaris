@@ -244,6 +244,22 @@ describe("inbound internet check", () => {
     assert.equal(low.error?.code, "InvalidPriority");
   });
 
+  it("lets a virtual network rule deny the private address and leave the internet check alone", () => {
+    const { world, vmId, nsgId, subnetId } = linkedWorld();
+    const associated = must(addInboundRule(world, subnetId, nsgId, { port: 80, access: "Allow", priority: 100 }));
+    const ruled = must(addSecurityRule(associated, nsgId, { direction: "Outbound", port: 443, access: "Deny", priority: 200, scope: "vnet" }));
+    const checked = checkSameVirtualNetwork(ruled, vmId, "10.0.1.4", 443);
+    assert.equal(checked.value?.allowed, false);
+    assert.match(checked.value?.summary ?? "", /securityRules\/Deny-443-Outbound-VirtualNetwork-200/);
+    const internet = checkOutboundInternet(ruled, vmId, 443);
+    assert.equal(internet.value?.allowed, true);
+    assert.match(internet.value?.summary ?? "", /AllowInternetOutBound/);
+    assert.equal((internet.value?.summary ?? "").includes("VirtualNetwork"), false);
+    const clash = addSecurityRule(ruled, nsgId, { direction: "Outbound", port: 80, access: "Allow", priority: 200, scope: "internet" });
+    assert.equal(clash.ok, false);
+    assert.equal(clash.error?.code, "DuplicateRulePriority");
+  });
+
   it("allows a private address in the virtual network, and ignores an internet rule", () => {
     const { world, vmId } = linkedWorld();
     const open = checkSameVirtualNetwork(world, vmId, "10.0.1.4", 443);

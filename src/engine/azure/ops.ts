@@ -869,7 +869,7 @@ export function addInboundRule(
 export function addSecurityRule(
   world: World,
   nsgId: string,
-  input: { direction: "Inbound" | "Outbound"; port: number; access: "Allow" | "Deny"; priority: number },
+  input: { direction: "Inbound" | "Outbound"; port: number; access: "Allow" | "Deny"; priority: number; scope?: "internet" | "vnet" },
 ): Result<World> {
   const existing = world.resources[canonicalId(nsgId)];
   return gate(world, "PATCH", nsgId, "Microsoft.Network/networkSecurityGroups", (current) => {
@@ -878,7 +878,7 @@ export function addSecurityRule(
     const invalid = ruleInputError(input);
     if (invalid) return { error: invalid };
     const existingRules = Array.isArray(nsg.properties.securityRules) ? nsg.properties.securityRules : [];
-    const rule = tcpSecurityRule(input, input.direction);
+    const rule = tcpSecurityRule(input, input.direction, input.scope === "vnet" ? "vnet" : "internet");
     const clash = duplicateRuleError(existingRules, input.direction, input.priority, rule.name, nsg.name);
     if (clash) return { error: clash };
     const next = cloneWorld(current);
@@ -1361,18 +1361,22 @@ function duplicateRuleError(existingRules: unknown[], direction: string, priorit
 function tcpSecurityRule(
   input: { port: number; access: "Allow" | "Deny"; priority: number },
   direction: "Inbound" | "Outbound",
+  scope: "internet" | "vnet" = "internet",
 ) {
   const outbound = direction === "Outbound";
+  const vnet = scope === "vnet";
   return {
-    name: `${input.access}-${input.port}-${direction}-${input.priority}`,
+    name: vnet
+      ? `${input.access}-${input.port}-${direction}-VirtualNetwork-${input.priority}`
+      : `${input.access}-${input.port}-${direction}-${input.priority}`,
     properties: {
       priority: input.priority,
       direction,
       access: input.access,
       protocol: "Tcp",
-      sourceAddressPrefix: outbound ? "*" : "Internet",
+      sourceAddressPrefix: vnet ? "VirtualNetwork" : outbound ? "*" : "Internet",
       sourcePortRange: "*",
-      destinationAddressPrefix: outbound ? "Internet" : "*",
+      destinationAddressPrefix: vnet ? "VirtualNetwork" : outbound ? "Internet" : "*",
       destinationPortRange: String(input.port),
     },
   };
