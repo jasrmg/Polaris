@@ -60,8 +60,12 @@ function linkLines(resource: Resource, resources: Resource[]): string[] {
     const props = (rule as { properties?: unknown }).properties;
     if (!props || typeof props !== "object") continue;
     const fields = props as { destinationPortRange?: unknown; access?: unknown; priority?: unknown; direction?: unknown; protocol?: unknown };
-    if (fields.direction === "Inbound" && fields.protocol === "Tcp") {
+    if (fields.protocol !== "Tcp") continue;
+    if (fields.direction === "Inbound") {
       lines.push(`Inbound TCP ${String(fields.destinationPortRange)} ${String(fields.access)}, priority ${String(fields.priority)}. Source Internet.`);
+    }
+    if (fields.direction === "Outbound") {
+      lines.push(`Outbound TCP ${String(fields.destinationPortRange)} ${String(fields.access)}, priority ${String(fields.priority)}. Destination Internet.`);
     }
   }
   return lines;
@@ -185,6 +189,18 @@ export function EnvironmentView() {
     void run((engine, current) => engine.associateNicSecurityGroup(current, nicId, nsgId));
   }
 
+  function addRule(nsgId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const direction = data.get("direction") === "Inbound" ? "Inbound" : "Outbound";
+    void run((engine, current) => engine.addSecurityRule(current, nsgId, {
+      direction,
+      port: Number(data.get("port")),
+      priority: Number(data.get("priority")),
+      access: data.get("access") === "Deny" ? "Deny" : "Allow",
+    }));
+  }
+
   function associateNsg(subnetId: string, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -294,6 +310,7 @@ export function EnvironmentView() {
                       const isVm = typeIs(resource, "microsoft.compute/virtualmachines");
                       const isNic = typeIs(resource, "microsoft.network/networkinterfaces");
                       const isSubnet = typeIs(resource, "microsoft.network/virtualnetworks/subnets");
+                      const isNsg = typeIs(resource, "microsoft.network/networksecuritygroups");
                       const canPower = provisioning === "Succeeded";
                       const links = linkLines(resource, resources);
                       const nics = inside.filter((item) => typeIs(item, "microsoft.network/networkinterfaces"));
@@ -405,6 +422,38 @@ export function EnvironmentView() {
                                 </form>
                               )}
                             </div>
+                          )}
+                          {isNsg && (
+                            <form className="mt-3 grid gap-2" onSubmit={(event) => addRule(resource.id, event)}>
+                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Direction
+                                  <select name="direction" className={selectClass} defaultValue="Outbound">
+                                    <option value="Outbound">Outbound</option>
+                                    <option value="Inbound">Inbound</option>
+                                  </select>
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Destination port
+                                  <Input name="port" type="number" defaultValue={443} />
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Priority
+                                  <Input name="priority" type="number" defaultValue={100} />
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Action
+                                  <select name="access" className={selectClass} defaultValue="Deny">
+                                    <option value="Allow">Allow</option>
+                                    <option value="Deny">Deny</option>
+                                  </select>
+                                </label>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                One TCP rule. Inbound is from Internet to any address. Outbound is from any address to Internet. Any source port. The same priority can be used once in each direction. This does not change which subnet or network interface uses the group.
+                              </p>
+                              <Button type="submit" size="sm" className="w-fit">Add rule</Button>
+                            </form>
                           )}
                           {isSubnet && (
                             nsgs.length === 0 ? (

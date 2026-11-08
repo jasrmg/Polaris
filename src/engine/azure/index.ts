@@ -34,6 +34,7 @@ export {
   deletePolicyAssignment,
   deleteRoleAssignment,
   addInboundRule,
+  addSecurityRule,
   associateNicSecurityGroup,
   attachNetworkInterface,
   attachPublicIp,

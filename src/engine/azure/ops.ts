@@ -810,77 +810,15 @@ export function addInboundRule(
         },
       };
     }
-    if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) {
-      return {
-        error: {
-          code: "InvalidPort",
-          message: "Record one destination port, from 1 to 65535. (sandbox wording)",
-          step: "validate",
-          learnUrl: LEARN.nsgOverview,
-        },
-      };
-    }
-    if (!Number.isInteger(input.priority) || input.priority < 100 || input.priority > 4096) {
-      return {
-        error: {
-          code: "InvalidPriority",
-          message: "Priority is a number between 100 and 4096. (sandbox wording)",
-          step: "validate",
-          learnUrl: LEARN.nsgOverview,
-        },
-      };
-    }
-    if (input.access !== "Allow" && input.access !== "Deny") {
-      return {
-        error: {
-          code: "InvalidAccess",
-          message: "A rule allows or denies. (sandbox wording)",
-          step: "validate",
-          learnUrl: LEARN.nsgOverview,
-        },
-      };
-    }
+    const invalid = ruleInputError(input);
+    if (invalid) return { error: invalid };
     const name = `${input.access}-${input.port}-Inbound-${input.priority}`;
     const existingRules = Array.isArray(nsg.properties.securityRules) ? nsg.properties.securityRules : [];
-    const duplicate = existingRules.some((rule) => {
-      const fields = ruleFields(rule);
-      return fields?.direction.toLowerCase() === "inbound" && fields.priority === input.priority;
-    });
-    if (duplicate) {
-      return {
-        error: {
-          code: "DuplicateRulePriority",
-          message: "You can't create two rules with the same priority and direction.",
-          step: "validate",
-          learnUrl: LEARN.nsgOverview,
-        },
-      };
-    }
-    if (existingRules.some((rule) => ruleName(rule).toLowerCase() === name.toLowerCase())) {
-      return {
-        error: {
-          code: "DuplicateRuleName",
-          message: `A rule named ${name} already exists in ${nsg.name}. (sandbox wording)`,
-          step: "validate",
-          learnUrl: LEARN.nsgOverview,
-        },
-      };
-    }
+    const clash = duplicateRuleError(existingRules, "Inbound", input.priority, name, nsg.name);
+    if (clash) return { error: clash };
     const nsgPolicy = evaluatePolicy(current, subjectFromResource(nsg));
     if (nsgPolicy.error) return { error: nsgPolicy.error };
-    const rule = {
-      name,
-      properties: {
-        priority: input.priority,
-        direction: "Inbound",
-        access: input.access,
-        protocol: "Tcp",
-        sourceAddressPrefix: "Internet",
-        sourcePortRange: "*",
-        destinationAddressPrefix: "*",
-        destinationPortRange: String(input.port),
-      },
-    };
+    const rule = tcpSecurityRule(input, "Inbound");
     const next = cloneWorld(current);
     const nextSubnet = next.resources[canonicalId(subnet.id)];
     const nextNsg = next.resources[canonicalId(nsg.id)];
@@ -896,6 +834,32 @@ export function addInboundRule(
       provisioningState: "Succeeded",
     };
     return { world: replaceResourcePolicyStates(next, nsg.id, nsgPolicy.states) };
+  }, { policy: existing ? subjectFromResource(existing) : undefined });
+}
+
+export function addSecurityRule(
+  world: World,
+  nsgId: string,
+  input: { direction: "Inbound" | "Outbound"; port: number; access: "Allow" | "Deny"; priority: number },
+): Result<World> {
+  const existing = world.resources[canonicalId(nsgId)];
+  return gate(world, "PATCH", nsgId, "Microsoft.Network/networkSecurityGroups", (current) => {
+    const nsg = current.resources[canonicalId(nsgId)];
+    if (!nsg || !isType(nsg, "microsoft.network/networksecuritygroups")) return { error: missing("network security group", nsgId, LEARN.nsg) };
+    const invalid = ruleInputError(input);
+    if (invalid) return { error: invalid };
+    const existingRules = Array.isArray(nsg.properties.securityRules) ? nsg.properties.securityRules : [];
+    const rule = tcpSecurityRule(input, input.direction);
+    const clash = duplicateRuleError(existingRules, input.direction, input.priority, rule.name, nsg.name);
+    if (clash) return { error: clash };
+    const next = cloneWorld(current);
+    const nextNsg = next.resources[canonicalId(nsg.id)];
+    nextNsg.properties = {
+      ...nextNsg.properties,
+      securityRules: [...existingRules, rule],
+      provisioningState: "Succeeded",
+    };
+    return { world: next };
   }, { policy: existing ? subjectFromResource(existing) : undefined });
 }
 
@@ -1302,6 +1266,78 @@ function parentVirtualNetwork(world: World, subnet: Resource): Resource | null {
   const at = subnet.id.toLowerCase().lastIndexOf(marker);
   if (at < 0) return null;
   return world.resources[canonicalId(subnet.id.slice(0, at))] ?? null;
+}
+
+function ruleInputError(input: { port: number; access: string; priority: number }): EngineError | null {
+  if (!Number.isInteger(input.port) || input.port < 1 || input.port > 65535) {
+    return {
+      code: "InvalidPort",
+      message: "Record one destination port, from 1 to 65535. (sandbox wording)",
+      step: "validate",
+      learnUrl: LEARN.nsgOverview,
+    };
+  }
+  if (!Number.isInteger(input.priority) || input.priority < 100 || input.priority > 4096) {
+    return {
+      code: "InvalidPriority",
+      message: "Priority is a number between 100 and 4096. (sandbox wording)",
+      step: "validate",
+      learnUrl: LEARN.nsgOverview,
+    };
+  }
+  if (input.access !== "Allow" && input.access !== "Deny") {
+    return {
+      code: "InvalidAccess",
+      message: "A rule allows or denies. (sandbox wording)",
+      step: "validate",
+      learnUrl: LEARN.nsgOverview,
+    };
+  }
+  return null;
+}
+
+function duplicateRuleError(existingRules: unknown[], direction: string, priority: number, name: string, nsgName: string): EngineError | null {
+  const duplicate = existingRules.some((rule) => {
+    const fields = ruleFields(rule);
+    return fields?.direction.toLowerCase() === direction.toLowerCase() && fields.priority === priority;
+  });
+  if (duplicate) {
+    return {
+      code: "DuplicateRulePriority",
+      message: "You can't create two rules with the same priority and direction.",
+      step: "validate",
+      learnUrl: LEARN.nsgOverview,
+    };
+  }
+  if (existingRules.some((rule) => ruleName(rule).toLowerCase() === name.toLowerCase())) {
+    return {
+      code: "DuplicateRuleName",
+      message: `A rule named ${name} already exists in ${nsgName}. (sandbox wording)`,
+      step: "validate",
+      learnUrl: LEARN.nsgOverview,
+    };
+  }
+  return null;
+}
+
+function tcpSecurityRule(
+  input: { port: number; access: "Allow" | "Deny"; priority: number },
+  direction: "Inbound" | "Outbound",
+) {
+  const outbound = direction === "Outbound";
+  return {
+    name: `${input.access}-${input.port}-${direction}-${input.priority}`,
+    properties: {
+      priority: input.priority,
+      direction,
+      access: input.access,
+      protocol: "Tcp",
+      sourceAddressPrefix: outbound ? "*" : "Internet",
+      sourcePortRange: "*",
+      destinationAddressPrefix: outbound ? "Internet" : "*",
+      destinationPortRange: String(input.port),
+    },
+  };
 }
 
 function ruleName(rule: unknown): string {

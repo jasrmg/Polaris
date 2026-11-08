@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   addInboundRule,
+  addSecurityRule,
   associateNicSecurityGroup,
   attachNetworkInterface,
   attachPublicIp,
@@ -202,6 +203,27 @@ describe("inbound internet check", () => {
     const fromSubnet = checkOutboundInternet(subnetDeny, vmId, 443);
     assert.equal(fromSubnet.value?.allowed, false);
     assert.match(fromSubnet.value?.summary ?? "", /securityRules\/Deny-443-Outbound-110/);
+  });
+
+  it("adds an outbound rule without changing the inbound one", () => {
+    const { world, vmId, subnetId, nsgId } = linkedWorld();
+    const inbound = must(addInboundRule(world, subnetId, nsgId, { port: 443, access: "Allow", priority: 100 }));
+    const ruled = must(addSecurityRule(inbound, nsgId, { direction: "Outbound", port: 443, access: "Deny", priority: 100 }));
+    const outbound = checkOutboundInternet(ruled, vmId, 443);
+    assert.equal(outbound.value?.allowed, false);
+    assert.match(outbound.value?.summary ?? "", /securityRules\/Deny-443-Outbound-100, priority 100/);
+    const stillIn = checkInboundInternet(ruled, vmId, 443);
+    assert.equal(stillIn.value?.allowed, true);
+    assert.match(stillIn.value?.summary ?? "", /securityRules\/Allow-443-Inbound-100/);
+
+    const again = addSecurityRule(ruled, nsgId, { direction: "Outbound", port: 80, access: "Allow", priority: 100 });
+    assert.equal(again.ok, false);
+    assert.equal(again.error?.code, "DuplicateRulePriority");
+    assert.match(again.error?.message ?? "", /same priority and direction/);
+
+    const low = addSecurityRule(ruled, nsgId, { direction: "Outbound", port: 443, access: "Deny", priority: 50 });
+    assert.equal(low.ok, false);
+    assert.equal(low.error?.code, "InvalidPriority");
   });
 
   it("puts a network security group on the network interface and blocks deleting it", () => {
