@@ -178,6 +178,13 @@ export function EnvironmentView() {
     void run((engine, current) => engine.attachPublicIp(current, nicId, publicIpId));
   }
 
+  function associateNicNsg(nicId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nsgId = String(new FormData(event.currentTarget).get("nsg") ?? "");
+    if (!nsgId) return;
+    void run((engine, current) => engine.associateNicSecurityGroup(current, nicId, nsgId));
+  }
+
   function associateNsg(subnetId: string, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -367,19 +374,37 @@ export function EnvironmentView() {
                             </div>
                           )}
                           {isNic && (
-                            publicIps.length === 0 ? (
-                              <p className="mt-3 text-sm text-muted-foreground">Create a public IP address in this group to attach one.</p>
-                            ) : (
-                              <form className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end" onSubmit={(event) => attachPip(resource.id, event)}>
-                                <label className="grid min-w-0 gap-1 text-sm">
-                                  Public IP address
-                                  <select name="pip" className={selectClass} defaultValue={chosen(publicIps, firstId(resource.properties.publicIpAddressId))}>
-                                    {publicIps.map((pip) => <option key={pip.id} value={pip.id}>{pip.name} · {pip.location}</option>)}
-                                  </select>
-                                </label>
-                                <Button type="submit" size="sm">Attach</Button>
-                              </form>
-                            )
+                            <div className="mt-3 grid gap-4">
+                              {publicIps.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">Create a public IP address in this group to attach one.</p>
+                              ) : (
+                                <form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end" onSubmit={(event) => attachPip(resource.id, event)}>
+                                  <label className="grid min-w-0 gap-1 text-sm">
+                                    Public IP address
+                                    <select name="pip" className={selectClass} defaultValue={chosen(publicIps, firstId(resource.properties.publicIpAddressId))}>
+                                      {publicIps.map((pip) => <option key={pip.id} value={pip.id}>{pip.name} · {pip.location}</option>)}
+                                    </select>
+                                  </label>
+                                  <Button type="submit" size="sm">Attach</Button>
+                                </form>
+                              )}
+                              {nsgs.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">Create a network security group in this group to associate one.</p>
+                              ) : (
+                                <form className="grid gap-2" onSubmit={(event) => associateNicNsg(resource.id, event)}>
+                                  <label className="grid min-w-0 gap-1 text-sm">
+                                    Network security group
+                                    <select name="nsg" className={selectClass} defaultValue={chosen(nsgs, firstId(resource.properties.networkSecurityGroupId))}>
+                                      {nsgs.map((nsg) => <option key={nsg.id} value={nsg.id}>{nsg.name} · {nsg.location}</option>)}
+                                    </select>
+                                  </label>
+                                  <p className="text-xs text-muted-foreground">
+                                    Associates the group only. It does not add a rule. Inbound checks use it after the subnet group. Outbound checks use it first.
+                                  </p>
+                                  <Button type="submit" size="sm" className="w-fit">Associate</Button>
+                                </form>
+                              )}
+                            </div>
                           )}
                           {isSubnet && (
                             nsgs.length === 0 ? (

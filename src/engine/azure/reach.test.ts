@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   addInboundRule,
+  associateNicSecurityGroup,
   attachNetworkInterface,
   attachPublicIp,
   checkInboundInternet,
   checkOutboundInternet,
   createResource,
+  deleteResource,
   createResourceGroup,
   starterWorld,
   updateResource,
@@ -200,6 +202,41 @@ describe("inbound internet check", () => {
     const fromSubnet = checkOutboundInternet(subnetDeny, vmId, 443);
     assert.equal(fromSubnet.value?.allowed, false);
     assert.match(fromSubnet.value?.summary ?? "", /securityRules\/Deny-443-Outbound-110/);
+  });
+
+  it("puts a network security group on the network interface and blocks deleting it", () => {
+    const { world, vmId, nicId, subnetId, nsgId } = linkedWorld();
+    const ruled = must(addInboundRule(world, subnetId, nsgId, { port: 443, access: "Allow", priority: 100 }));
+    const associated = must(associateNicSecurityGroup(ruled, nicId, nsgId));
+    const removed = deleteResource(associated, nsgId);
+    assert.equal(removed.ok, false);
+    assert.match(removed.error?.message ?? "", /can't delete it/);
+    const checked = checkInboundInternet(associated, vmId, 443);
+    assert.equal(checked.value?.allowed, true);
+    assert.match(checked.trace.map((line) => line.detail ?? "").join("\n"), /nic-web-01 uses nsg-web/);
+
+    const fresh = linkedWorld();
+    const east = must(createResource(fresh.world, {
+      armType: "Microsoft.Network/networkSecurityGroups",
+      name: "nsg-east",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+    }));
+    const eastId = Object.values(east.resources).find((resource) => resource.name === "nsg-east")!.id;
+    const mismatch = associateNicSecurityGroup(east, fresh.nicId, eastId);
+    assert.equal(mismatch.ok, false);
+    assert.equal(mismatch.error?.code, "NsgRegionMismatch");
+
+    const other = must(createResource(associated, {
+      armType: "Microsoft.Network/networkSecurityGroups",
+      name: "nsg-nic",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+    }));
+    const otherId = Object.values(other.resources).find((resource) => resource.name === "nsg-nic")!.id;
+    const again = associateNicSecurityGroup(other, nicId, otherId);
+    assert.equal(again.ok, false);
+    assert.equal(again.error?.code, "NsgAlreadyAssociated");
   });
 
   it("refuses a port outside 1 to 65535 and does not change the world", () => {

@@ -899,6 +899,60 @@ export function addInboundRule(
   }, { policy: existing ? subjectFromResource(existing) : undefined });
 }
 
+export function associateNicSecurityGroup(world: World, nicId: string, nsgId: string): Result<World> {
+  const existing = world.resources[canonicalId(nicId)];
+  return gate(world, "PATCH", nicId, "Microsoft.Network/networkInterfaces", (current) => {
+    const nic = current.resources[canonicalId(nicId)];
+    const nsg = current.resources[canonicalId(nsgId)];
+    if (!nic || !isType(nic, "microsoft.network/networkinterfaces")) return { error: missing("network interface", nicId, LEARN.nic) };
+    if (!nsg || !isType(nsg, "microsoft.network/networksecuritygroups")) return { error: missing("network security group", nsgId, LEARN.nsg) };
+    const subnetId = nicSubnetId(nic);
+    const subnet = subnetId ? current.resources[canonicalId(subnetId)] : undefined;
+    if (!subnet) {
+      return {
+        error: {
+          code: "SubnetRequired",
+          message: `${nic.name} is not in a subnet. (sandbox wording)`,
+          step: "validate",
+          learnUrl: LEARN.nic,
+        },
+      };
+    }
+    const vnet = parentVirtualNetwork(current, subnet);
+    const regionOf = vnet?.location ?? subnet.location;
+    if (nsg.subscriptionId !== nic.subscriptionId || nsg.location.toLowerCase() !== regionOf.toLowerCase()) {
+      return {
+        error: {
+          code: "NsgRegionMismatch",
+          message: "The NSG must be in the same subscription and region as the virtual network. (sandbox wording)",
+          step: "validate",
+          learnUrl: LEARN.nsg,
+        },
+      };
+    }
+    const currentNsg = typeof nic.properties.networkSecurityGroupId === "string" ? canonicalId(nic.properties.networkSecurityGroupId) : "";
+    if (currentNsg && currentNsg !== canonicalId(nsg.id)) {
+      return {
+        error: {
+          code: "NsgAlreadyAssociated",
+          message: `Network interface ${nic.name} is already associated with another network security group. (sandbox wording)`,
+          step: "validate",
+          learnUrl: LEARN.nsg,
+        },
+      };
+    }
+    const next = cloneWorld(current);
+    const target = next.resources[canonicalId(nic.id)];
+    target.properties = {
+      ...target.properties,
+      networkSecurityGroupId: nsg.id,
+      networkSecurityGroup: { id: nsg.id },
+      provisioningState: "Succeeded",
+    };
+    return { world: next };
+  }, { policy: existing ? subjectFromResource(existing) : undefined });
+}
+
 export function deleteResource(world: World, id: string): Result<World> {
   return gate(world, "DELETE", id, null, (current) => {
     const existing = current.resources[canonicalId(id)];
@@ -1224,6 +1278,23 @@ function withPublicIp(properties: Record<string, unknown>, publicIpId: string): 
         };
       });
   return { ...properties, publicIpAddressId: publicIpId, ipConfigurations: nextConfigs, provisioningState: "Succeeded" };
+}
+
+function nicSubnetId(nic: Resource): string | null {
+  if (typeof nic.properties.subnetId === "string") return nic.properties.subnetId;
+  const configs = nic.properties.ipConfigurations;
+  if (!Array.isArray(configs)) return null;
+  for (const config of configs) {
+    if (!config || typeof config !== "object") continue;
+    const record = config as Record<string, unknown>;
+    if (typeof record.subnetId === "string") return record.subnetId;
+    const props = record.properties;
+    if (props && typeof props === "object") {
+      const subnet = (props as { subnet?: { id?: unknown } }).subnet;
+      if (subnet && typeof subnet.id === "string") return subnet.id;
+    }
+  }
+  return null;
 }
 
 function parentVirtualNetwork(world: World, subnet: Resource): Resource | null {
