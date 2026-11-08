@@ -4,6 +4,7 @@
  */
 
 import { failure, success, type EngineError, type Result, type TraceLine } from "../core/result";
+import { nextPrivateIp, withPrivateIp } from "./addresses";
 import { LIMITS } from "./constants";
 import { canonicalId, managementGroupId, parseId, resourceGroupId, resourceId, subscriptionId } from "./ids";
 import { LEARN } from "./learn";
@@ -574,6 +575,26 @@ export function createResource(world: World, input: CreateResourceInput, options
           learnUrl: LEARN.limits,
         },
       };
+    }
+
+    if (typeKey === "microsoft.network/networkinterfaces" && typeof properties.privateIPAddress !== "string") {
+      const subnetId = typeof properties.subnetId === "string" ? properties.subnetId : null;
+      const subnet = subnetId ? current.resources[canonicalId(subnetId)] : undefined;
+      if (subnet) {
+        const address = nextPrivateIp(current, subnet);
+        if (!address) {
+          return {
+            error: {
+              code: "SubnetFull",
+              message: `${subnet.name} has no address left. Azure reserves the first four addresses and the last address in a subnet.`,
+              step: "validate",
+              learnUrl: LEARN.privateIp,
+              next: "Use a larger subnet, or delete a network interface in this subnet.",
+            },
+          };
+        }
+        Object.assign(properties, withPrivateIp(properties, address));
+      }
     }
 
     const resourceIdValue = parent

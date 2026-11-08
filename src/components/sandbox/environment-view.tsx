@@ -5,7 +5,8 @@ import { useState, type FormEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { EngineError, InboundCheck, Resource } from "@/engine/azure";
+import { assignedPrivateIp } from "@/engine/azure/addresses";
+import type { EngineError, InboundCheck, Resource, World } from "@/engine/azure";
 import { resourcePath } from "@/lib/resource-path";
 import { TRY_SLUGS, sandboxCreatePath, type TrySlug } from "@/lib/sandbox-path";
 import { SandboxBanner } from "./sandbox-banner";
@@ -45,8 +46,12 @@ function chosen(resources: Resource[], current: string | null): string {
   return resources[0]?.id ?? "";
 }
 
-function linkLines(resource: Resource, resources: Resource[]): string[] {
+function linkLines(resource: Resource, resources: Resource[], world: World): string[] {
   const lines: string[] = [];
+  if (typeIs(resource, "microsoft.network/networkinterfaces")) {
+    const address = assignedPrivateIp(world, resource);
+    if (address) lines.push(`Private IP address: ${address}. The sandbox uses the lowest free address. Azure does not guarantee that order.`);
+  }
   const nicId = firstId(resource.properties.nicIds);
   if (nicId) lines.push(`Network interface: ${named(resources, nicId)}`);
   const pipId = firstId(resource.properties.publicIpAddressId);
@@ -332,7 +337,7 @@ export function EnvironmentView() {
                       const isSubnet = typeIs(resource, "microsoft.network/virtualnetworks/subnets");
                       const isNsg = typeIs(resource, "microsoft.network/networksecuritygroups");
                       const canPower = provisioning === "Succeeded";
-                      const links = linkLines(resource, resources);
+                      const links = linkLines(resource, resources, world);
                       const nics = inside.filter((item) => typeIs(item, "microsoft.network/networkinterfaces"));
                       const publicIps = inside.filter((item) => typeIs(item, "microsoft.network/publicipaddresses"));
                       const nsgs = inside.filter((item) => typeIs(item, "microsoft.network/networksecuritygroups"));
@@ -421,7 +426,7 @@ export function EnvironmentView() {
                                   <Button type="submit" size="sm">Check</Button>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  A new TCP connection to an address inside this virtual network. The way out is checked first, then the destination subnet. A network interface group at the destination is not checked, because a private IP is not recorded. Routes, peering, DNS, and power state are not part of this check.
+                                  A new TCP connection to an address inside this virtual network. The way out is checked first, then the destination subnet, then the network interface that has that address. Routes, peering, DNS, and power state are not part of this check.
                                 </p>
                                 {checks[`${resource.id}:vnet`] && (
                                   <div className="rounded-lg border p-3 text-sm">

@@ -259,7 +259,8 @@ describe("inbound internet check", () => {
     assert.match(checked.value?.summary ?? "", /defaultSecurityRules\/AllowVNetInBound, priority 65000/);
     const trace = checked.trace.map((line) => line.detail ?? "").join("\n");
     assert.match(trace, /AllowVnetOutBound/);
-    assert.match(trace, /private IP is not recorded/);
+    assert.match(trace, /nic-web-01 has 10\.0\.1\.4/);
+    assert.equal(trace.includes("not recorded"), false);
     assert.equal(trace.includes("Deny-443"), false);
 
     const before = JSON.stringify(world);
@@ -303,7 +304,14 @@ describe("inbound internet check", () => {
       properties: { addressPrefix: "10.0.2.0/24" },
     }));
     const dbId = Object.values(other.resources).find((resource) => resource.name === "snet-db")!.id;
-    const dbNsg = must(createResource(other, {
+    const dbNic = must(createResource(other, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-db",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { subnetId: dbId, ipConfigurations: [{ name: "ipconfig1", properties: { subnet: { id: dbId } } }] },
+    }));
+    const dbNsg = must(createResource(dbNic, {
       armType: "Microsoft.Network/networkSecurityGroups",
       name: "nsg-db",
       resourceGroup: "rg-demo",
@@ -317,6 +325,50 @@ describe("inbound internet check", () => {
     const fromApp = checkSameVirtualNetwork(linked, vmId, "10.0.2.4", 443);
     assert.equal(fromApp.value?.allowed, false);
     assert.match(fromApp.value?.summary ?? "", /securityRules\/Deny-443-Inbound-100/);
+    assert.match(fromApp.trace.map((line) => line.detail ?? "").join("\n"), /does not see it/);
+    const empty = checkSameVirtualNetwork(linked, vmId, "10.0.2.5", 443);
+    assert.equal(empty.value?.allowed, false);
+    assert.match(empty.value?.summary ?? "", /No network interface has 10\.0\.2\.5/);
+  });
+
+  it("refuses a fourth network interface in a /29 subnet", () => {
+    let world = must(createResourceGroup(starterWorld(), { name: "rg-demo", location: "southeastasia" }));
+    world = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-sea",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.0.0.0/16"] } },
+    }));
+    world = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks/subnets",
+      name: "snet-tiny",
+      resourceGroup: "rg-demo",
+      parentName: "vnet-sea",
+      location: "southeastasia",
+      properties: { addressPrefix: "10.0.3.0/29" },
+    }));
+    const subnetId = Object.values(world.resources).find((resource) => resource.name === "snet-tiny")!.id;
+    for (const name of ["nic-a", "nic-b", "nic-c"]) {
+      world = must(createResource(world, {
+        armType: "Microsoft.Network/networkInterfaces",
+        name,
+        resourceGroup: "rg-demo",
+        location: "southeastasia",
+        properties: { subnetId },
+      }));
+    }
+    const full = createResource(world, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-d",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { subnetId },
+    });
+    assert.equal(full.ok, false);
+    assert.equal(full.error?.code, "SubnetFull");
+    assert.match(full.error?.message ?? "", /first four addresses and the last/);
+    assert.match(full.error?.next ?? "", /larger subnet/);
   });
 
   it("puts a network security group on the network interface and blocks deleting it", () => {

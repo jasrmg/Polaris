@@ -18,6 +18,7 @@ export const LEARN = {
   nonregional: "https://learn.microsoft.com/en-us/azure/reliability/regions-nonregional-services",
   dnsBicep: "https://learn.microsoft.com/en-us/azure/dns/dns-get-started-bicep",
   subnet: "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-manage-subnet",
+  privateIp: "https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/private-ip-addresses",
   nsg: "https://learn.microsoft.com/en-us/azure/virtual-network/manage-network-security-group",
   nsgOverview: "https://learn.microsoft.com/en-us/azure/virtual-network/network-security-groups-overview",
   nsgHowItWorks: "https://learn.microsoft.com/en-us/azure/virtual-network/network-security-group-how-it-works",

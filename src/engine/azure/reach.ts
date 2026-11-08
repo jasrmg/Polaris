@@ -5,13 +5,14 @@
  * Outbound: from the virtual machine to the internet. Network interface first,
  * then the subnet. An inbound rule is not consulted.
  * Same virtual network: to one IPv4 address inside the virtual network. The way
- * out is checked first, then the destination subnet on the way in. A private IP
- * is not recorded on a network interface, so that group is not checked.
+ * out is checked first, then the destination subnet, then the network interface
+ * that has that address.
  * Routes, peering, DNS, appliances, and power state are not part of these checks.
  * Sources: docs/research/networking-rules.md sections 1.1–1.4 and 1.8, decision N1.
  */
 
 import { failure, success, type Result, type TraceLine } from "../core/result";
+import { assignedPrivateIp } from "./addresses";
 import { containsCidr, parseCidr } from "./cidr";
 import { canonicalId } from "./ids";
 import { LEARN } from "./learn";
@@ -111,8 +112,7 @@ const DEFAULT_OUTBOUND: Rule[] = [
 ];
 
 const NOT_FILTERED = "Allowed. No network security group on the network interface or the subnet, so this outbound flow is not filtered.";
-const VNET_NOT_FILTERED = "Allowed. No network security group on the way out or on the destination subnet, so this virtual network flow is not filtered.";
-const NIC_UNRECORDED = "A private IP is not recorded on a network interface, so that network security group is not checked.";
+const VNET_NOT_FILTERED = "Allowed. No network security group on the way out or at the destination, so this virtual network flow is not filtered.";
 
 export function checkInboundInternet(world: World, vmId: string, port: number): Result<InboundCheck> {
   const opened = openPath(world, vmId, port, "Inbound TCP from the internet.");
@@ -276,15 +276,34 @@ export function checkSameVirtualNetwork(world: World, vmId: string, address: str
     }
   }
 
+  const destinationNic = Object.values(world.resources).find((resource) =>
+    resource.type.toLowerCase() === "microsoft.network/networkinterfaces" && assignedPrivateIp(world, resource) === destination,
+  );
+  if (!destinationNic) {
+    trace.push({ step: "apply", ok: true, detail: `No network interface has ${destination}.` });
+    return answered(trace, false, `No network interface has ${destination}. (sandbox wording)`, LEARN.nic);
+  }
+  trace.push({ step: "apply", ok: true, detail: `${destinationNic.name} has ${destination}.` });
   const destinationNsg = attachedNsg(world, destinationSubnet);
   if (!destinationNsg) {
     trace.push({ step: "apply", ok: true, detail: `No network security group on ${destinationSubnet.name}. No NSG at this layer.` });
-    trace.push({ step: "apply", ok: true, detail: NIC_UNRECORDED });
-    return answered(trace, true, sourceVerdict ?? VNET_NOT_FILTERED, LEARN.nsgHowItWorks);
+  } else {
+    const matched = firstMatch(destinationNsg, port, "inbound", "vnet");
+    trace.push({ step: "apply", ok: true, detail: `${destinationSubnet.name} uses ${destinationNsg.name}. ${ruleLine(matched)}` });
+    if (matched.access === "Deny") {
+      trace.push({ step: "apply", ok: true, detail: "The subnet network security group denied the traffic. The network interface does not see it." });
+      return answered(trace, false, verdict(matched), LEARN.nsgOverview);
+    }
   }
-  const matched = firstMatch(destinationNsg, port, "inbound", "vnet");
-  trace.push({ step: "apply", ok: true, detail: `${destinationSubnet.name} uses ${destinationNsg.name}. ${ruleLine(matched)}` });
-  trace.push({ step: "apply", ok: true, detail: NIC_UNRECORDED });
+  const destinationNicNsg = attachedNsg(world, destinationNic);
+  if (!destinationNicNsg) {
+    trace.push({ step: "apply", ok: true, detail: `No network security group on ${destinationNic.name}. No NSG at this layer.` });
+    if (!destinationNsg) return answered(trace, true, sourceVerdict ?? VNET_NOT_FILTERED, LEARN.nsgHowItWorks);
+    trace.push({ step: "apply", ok: true, detail: `${destinationNic.name} gets whatever ${destinationSubnet.name} allows.` });
+    return answered(trace, true, verdict(firstMatch(destinationNsg, port, "inbound", "vnet")), LEARN.nsgHowItWorks);
+  }
+  const matched = firstMatch(destinationNicNsg, port, "inbound", "vnet");
+  trace.push({ step: "apply", ok: true, detail: `${destinationNic.name} uses ${destinationNicNsg.name}. ${ruleLine(matched)}` });
   return answered(trace, matched.access === "Allow", verdict(matched), LEARN.nsgOverview);
 }
 
