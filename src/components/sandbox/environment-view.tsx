@@ -246,6 +246,7 @@ export function EnvironmentView() {
     void run((engine, current) => engine.addInternetRoute(current, subnetId, {
       tableName: String(data.get("tableName") ?? ""),
       routeName: String(data.get("routeName") ?? ""),
+      addressPrefix: String(data.get("addressPrefix") ?? ""),
       nextHop,
     }));
   }
@@ -458,7 +459,7 @@ export function EnvironmentView() {
                                   <Button type="submit" size="sm">Check</Button>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  A new TCP connection to an address inside this virtual network. The way out is checked first, then the destination subnet, then the network interface that has that address. A 0.0.0.0/0 route does not decide this. Peering, DNS, and power state are not part of this check.
+                                  A new TCP connection to an address inside this virtual network. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A 0.0.0.0/0 route does not decide an address inside the virtual network. Peering, DNS, and power state are not part of this check.
                                 </p>
                                 {checks[`${resource.id}:vnet`] && (
                                   <div className="rounded-lg border p-3 text-sm">
@@ -584,14 +585,18 @@ export function EnvironmentView() {
                               </form>
                             )}
                             <form className="mt-3 grid gap-2" onSubmit={(event) => addSubnetRoute(resource.id, event)}>
-                              <div className="grid gap-2 sm:grid-cols-3">
+                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                                 <label className="grid min-w-0 gap-1 text-sm">
                                   Route table
                                   <Input name="tableName" defaultValue="rt-app" />
                                 </label>
                                 <label className="grid min-w-0 gap-1 text-sm">
                                   Route name
-                                  <Input name="routeName" defaultValue="to-internet" />
+                                  <Input name="routeName" defaultValue="drop-subnet" />
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Address prefix
+                                  <Input name="addressPrefix" defaultValue="10.0.1.0/24" />
                                 </label>
                                 <label className="grid min-w-0 gap-1 text-sm">
                                   Next hop
@@ -602,7 +607,7 @@ export function EnvironmentView() {
                                 </label>
                               </div>
                               <p className="text-xs text-muted-foreground">
-                                One route for 0.0.0.0/0. None drops outbound internet traffic after the security groups allow it. Internet sends that traffic to the internet. An address inside the virtual network keeps the longer system route. A subnet can have one route table, and this prefix can be used once.
+                                One route. The longest matching prefix wins, and a prefix can sit inside another. 0.0.0.0/0 changes outbound internet traffic after the security groups allow it. A longer prefix can decide an address inside the virtual network. None drops that traffic. Internet sends it to the internet. A subnet can have one route table.
                               </p>
                               <Button type="submit" size="sm" className="w-fit">Add route</Button>
                             </form>

@@ -5,6 +5,7 @@
 
 import { failure, success, type EngineError, type Result, type TraceLine } from "../core/result";
 import { nextPrivateIp, withPrivateIp } from "./addresses";
+import { formatCidr, parseCidr } from "./cidr";
 import { LIMITS } from "./constants";
 import { canonicalId, managementGroupId, parseId, resourceGroupId, resourceId, subscriptionId } from "./ids";
 import { LEARN } from "./learn";
@@ -895,7 +896,7 @@ export function addSecurityRule(
 export function addInternetRoute(
   world: World,
   subnetId: string,
-  input: { tableName: string; routeName: string; nextHop: "None" | "Internet" },
+  input: { tableName: string; routeName: string; nextHop: "None" | "Internet"; addressPrefix?: string },
 ): Result<World> {
   const subnet = world.resources[canonicalId(subnetId)];
   if (!subnet || !isType(subnet, "microsoft.network/virtualnetworks/subnets")) {
@@ -919,6 +920,27 @@ export function addInternetRoute(
       next: "Choose None to drop traffic, or Internet to send it to the internet.",
       step: "validate",
       learnUrl: LEARN.udr,
+    });
+  }
+  const rawPrefix = (input.addressPrefix ?? "0.0.0.0/0").trim();
+  const parsedPrefix = parseCidr(rawPrefix);
+  if ("error" in parsedPrefix) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "InvalidPrefix",
+      message: "Enter an IPv4 prefix. (sandbox wording)",
+      next: "Enter a prefix such as 10.0.1.0/24 or 0.0.0.0/0.",
+      step: "validate",
+      learnUrl: LEARN.routeTable,
+    });
+  }
+  const addressPrefix = formatCidr(parsedPrefix);
+  if (addressPrefix !== rawPrefix) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "InvalidPrefix",
+      message: "Enter the network address of the prefix. (sandbox wording)",
+      next: `Use ${addressPrefix}.`,
+      step: "validate",
+      learnUrl: LEARN.routeTable,
     });
   }
   const vnet = parentVirtualNetwork(world, subnet);
@@ -1011,14 +1033,17 @@ export function addInternetRoute(
       if (!route || typeof route !== "object") return false;
       const props = (route as { properties?: unknown }).properties;
       if (!props || typeof props !== "object") return false;
-      return (props as { addressPrefix?: unknown }).addressPrefix === "0.0.0.0/0";
+      const current = (props as { addressPrefix?: unknown }).addressPrefix;
+      if (typeof current !== "string") return false;
+      const parsed = parseCidr(current);
+      return !("error" in parsed) && formatCidr(parsed) === addressPrefix;
     });
     if (duplicatePrefix) {
       return {
         error: {
           code: "DuplicateRoutePrefix",
           message: "The prefix can't be duplicated in more than one route within the route table, though the prefix can be within another prefix.",
-          next: "This subnet already has a 0.0.0.0/0 route. Reset the subscription if you need a different one.",
+          next: `This route table already has ${addressPrefix}. A longer or shorter prefix can be added.`,
           step: "validate",
           learnUrl: LEARN.routeTable,
         },
@@ -1037,7 +1062,7 @@ export function addInternetRoute(
     };
     nextTable.properties = {
       ...nextTable.properties,
-      routes: [...existingRoutes, { name: routeName, properties: { addressPrefix: "0.0.0.0/0", nextHopType: nextHop } }],
+      routes: [...existingRoutes, { name: routeName, properties: { addressPrefix, nextHopType: nextHop } }],
       provisioningState: "Succeeded",
     };
     return { world: replaceResourcePolicyStates(next, currentTable.id, tablePolicy.states) };

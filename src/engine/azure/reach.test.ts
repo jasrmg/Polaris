@@ -315,6 +315,47 @@ describe("inbound internet check", () => {
     assert.equal(mismatch.error?.code, "RouteTableRegionMismatch");
   });
 
+  it("lets a longer prefix decide a private address and leave the internet route alone", () => {
+    const { world, vmId, subnetId } = linkedWorld();
+    const internet = must(addInternetRoute(world, subnetId, { tableName: "rt-app", routeName: "to-internet", nextHop: "None", addressPrefix: "0.0.0.0/0" }));
+    const longer = must(addInternetRoute(internet, subnetId, { tableName: "rt-app", routeName: "drop-subnet", nextHop: "None", addressPrefix: "10.0.1.0/24" }));
+    const dropped = checkSameVirtualNetwork(longer, vmId, "10.0.1.4", 443);
+    assert.equal(dropped.value?.allowed, false);
+    assert.match(dropped.value?.summary ?? "", /Dropped\. routes\/drop-subnet, 10\.0\.1\.0\/24, next hop None/);
+    assert.equal((dropped.trace.map((line) => line.detail ?? "").join("\n")).includes("has 10.0.1.4"), false);
+    const outbound = checkOutboundInternet(longer, vmId, 443);
+    assert.match(outbound.value?.summary ?? "", /routes\/to-internet, 0\.0\.0\.0\/0, next hop None/);
+    assert.equal((outbound.value?.summary ?? "").includes("drop-subnet"), false);
+
+    const onlyLonger = must(addInternetRoute(world, subnetId, { tableName: "rt-app", routeName: "drop-subnet", nextHop: "None", addressPrefix: "10.0.1.0/24" }));
+    const stillOpen = checkOutboundInternet(onlyLonger, vmId, 443);
+    assert.match(stillOpen.value?.summary ?? "", /not filtered/);
+    const inside = checkSameVirtualNetwork(onlyLonger, vmId, "10.0.1.4", 80);
+    assert.match(inside.value?.summary ?? "", /routes\/drop-subnet, 10\.0\.1\.0\/24/);
+
+    const sent = must(addInternetRoute(world, subnetId, { tableName: "rt-web", routeName: "via-internet", nextHop: "Internet", addressPrefix: "10.0.1.4/32" }));
+    const left = checkSameVirtualNetwork(sent, vmId, "10.0.1.4", 443);
+    assert.match(left.value?.summary ?? "", /Sent to the internet\. routes\/via-internet, 10\.0\.1\.4\/32, next hop Internet/);
+    const elsewhere = checkSameVirtualNetwork(sent, vmId, "10.0.1.5", 443);
+    assert.equal(elsewhere.value?.allowed, false);
+    assert.match(elsewhere.value?.summary ?? "", /No network interface has 10\.0\.1\.5/);
+
+    const { world: deniedWorld, vmId: deniedVm, subnetId: deniedSubnet, nsgId } = linkedWorld();
+    const associated = must(addInboundRule(deniedWorld, deniedSubnet, nsgId, { port: 80, access: "Allow", priority: 100 }));
+    const ruled = must(addSecurityRule(associated, nsgId, { direction: "Outbound", port: 443, access: "Deny", priority: 200, scope: "vnet" }));
+    const withRoute = must(addInternetRoute(ruled, deniedSubnet, { tableName: "rt-app", routeName: "drop-subnet", nextHop: "None", addressPrefix: "10.0.1.0/24" }));
+    const denied = checkSameVirtualNetwork(withRoute, deniedVm, "10.0.1.4", 443);
+    assert.match(denied.value?.summary ?? "", /Deny-443-Outbound-VirtualNetwork-200/);
+    assert.equal((denied.trace.map((line) => line.detail ?? "").join("\n")).includes("drop-subnet"), false);
+
+    const hostBits = addInternetRoute(world, subnetId, { tableName: "rt-app", routeName: "bad-prefix", nextHop: "None", addressPrefix: "10.0.1.4/24" });
+    assert.equal(hostBits.ok, false);
+    assert.equal(hostBits.error?.code, "InvalidPrefix");
+    assert.match(hostBits.error?.next ?? "", /10\.0\.1\.0\/24/);
+    const nested = addInternetRoute(longer, subnetId, { tableName: "rt-app", routeName: "drop-host", nextHop: "None", addressPrefix: "10.0.1.4/32" });
+    assert.equal(nested.ok, true, nested.error?.message);
+  });
+
   it("allows a private address in the virtual network, and ignores an internet rule", () => {
     const { world, vmId } = linkedWorld();
     const open = checkSameVirtualNetwork(world, vmId, "10.0.1.4", 443);

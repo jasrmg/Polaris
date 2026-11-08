@@ -9,9 +9,12 @@
  * that has that address.
  * Outbound to the internet uses a 0.0.0.0/0 user route after the security groups allow
  * the traffic. Next hop None drops it. Next hop Internet leaves the security
- * result. Inbound, same-network, peering, DNS, appliances, and power state
- * do not use that route.
- * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, and 2.7.
+ * result. The same-network check uses the longest matching route after the
+ * security groups allow the traffic. The virtual network system route is longer
+ * than 0.0.0.0/0, so that route does not decide an address inside the network.
+ * A longer user route can. Peering, DNS, appliances, and power state are not
+ * part of these checks.
+ * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, 2.6, and 2.7.
  */
 
 import { failure, success, type Result, type TraceLine } from "../core/result";
@@ -218,6 +221,53 @@ function finishOutbound(world: World, trace: TraceLine[], subnet: Resource, summ
   return answered(trace, true, summary, learnUrl);
 }
 
+function winningUserRoute(
+  world: World,
+  subnet: Resource,
+  vnet: Resource,
+  address: string,
+): { name: string; prefix: string; nextHop: "None" | "Internet"; tableName: string } | null {
+  let bestLength = -1;
+  let winner: { name: string; prefix: string; nextHop: "None" | "Internet"; tableName: string } | null = null;
+  const consider = (length: number, route: typeof winner) => {
+    if (length > bestLength || (length === bestLength && route && !winner)) {
+      bestLength = length;
+      winner = route;
+    }
+  };
+  for (const prefix of prefixesOf(vnet)) {
+    if (!prefixContains(prefix, address)) continue;
+    const parsed = parseCidr(prefix);
+    if (!("error" in parsed)) consider(parsed.prefix, null);
+  }
+  for (const route of userRoutes(world, subnet)) {
+    if (!prefixContains(route.prefix, address)) continue;
+    const parsed = parseCidr(route.prefix);
+    if (!("error" in parsed)) consider(parsed.prefix, route);
+  }
+  return winner;
+}
+
+function userRoutes(world: World, subnet: Resource): Array<{ name: string; prefix: string; nextHop: "None" | "Internet"; tableName: string }> {
+  const tableId = subnet.properties.routeTableId;
+  if (typeof tableId !== "string") return [];
+  const table = world.resources[canonicalId(tableId)];
+  if (!table || !Array.isArray(table.properties.routes)) return [];
+  const routes: Array<{ name: string; prefix: string; nextHop: "None" | "Internet"; tableName: string }> = [];
+  for (const route of table.properties.routes) {
+    if (!route || typeof route !== "object") continue;
+    const name = (route as { name?: unknown }).name;
+    const props = (route as { properties?: unknown }).properties;
+    if (typeof name !== "string" || !props || typeof props !== "object") continue;
+    const prefix = (props as { addressPrefix?: unknown }).addressPrefix;
+    const nextHop = (props as { nextHopType?: unknown }).nextHopType;
+    if (typeof prefix === "string" && (nextHop === "None" || nextHop === "Internet")) {
+      routes.push({ name, prefix, nextHop, tableName: table.name });
+    }
+  }
+  return routes;
+}
+
 function userInternetRoute(world: World, subnet: Resource): { name: string; nextHop: "None" | "Internet"; tableName: string } | null {
   const tableId = subnet.properties.routeTableId;
   if (typeof tableId !== "string") return null;
@@ -316,6 +366,26 @@ export function checkSameVirtualNetwork(world: World, vmId: string, address: str
       }
       sourceVerdict = verdict(matched);
     }
+  }
+
+  const selected = winningUserRoute(world, subnet, vnet, destination);
+  if (selected) {
+    trace.push({
+      step: "apply",
+      ok: true,
+      detail: `${subnet.name} uses ${selected.tableName}. routes/${selected.name}, ${selected.prefix}, next hop ${selected.nextHop}. The longest matching prefix wins.`,
+    });
+    if (selected.nextHop === "None") {
+      trace.push({
+        step: "apply",
+        ok: true,
+        detail: "Traffic routed to the None next hop type is dropped rather than routed outside the subnet.",
+      });
+      trace.push({ step: "apply", ok: true, detail: "The destination does not see it." });
+      return answered(trace, false, `Dropped. routes/${selected.name}, ${selected.prefix}, next hop None.`, LEARN.udr);
+    }
+    trace.push({ step: "apply", ok: true, detail: "Azure routes that prefix to the internet." });
+    return answered(trace, false, `Sent to the internet. routes/${selected.name}, ${selected.prefix}, next hop Internet.`, LEARN.udr);
   }
 
   const destinationNic = Object.values(world.resources).find((resource) =>
