@@ -7,8 +7,11 @@
  * Same virtual network: to one IPv4 address inside the virtual network. The way
  * out is checked first, then the destination subnet, then the network interface
  * that has that address.
- * Routes, peering, DNS, appliances, and power state are not part of these checks.
- * Sources: docs/research/networking-rules.md sections 1.1–1.4 and 1.8, decision N1.
+ * Outbound to the internet uses a 0.0.0.0/0 user route after the security groups allow
+ * the traffic. Next hop None drops it. Next hop Internet leaves the security
+ * result. Inbound, same-network, peering, DNS, appliances, and power state
+ * do not use that route.
+ * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, and 2.7.
  */
 
 import { failure, success, type Result, type TraceLine } from "../core/result";
@@ -173,7 +176,7 @@ export function checkOutboundInternet(world: World, vmId: string, port: number):
   if (!nicNsg && !subnetNsg) {
     trace.push({ step: "apply", ok: true, detail: `No network security group on ${nic.name}. No NSG at this layer.` });
     trace.push({ step: "apply", ok: true, detail: `No network security group on ${subnet.name}. No NSG at this layer.` });
-    return answered(trace, true, NOT_FILTERED, LEARN.nsgHowItWorks);
+    return finishOutbound(world, trace, subnet, NOT_FILTERED, LEARN.nsgHowItWorks);
   }
   if (!nicNsg) {
     trace.push({ step: "apply", ok: true, detail: `No network security group on ${nic.name}. No NSG at this layer.` });
@@ -188,11 +191,50 @@ export function checkOutboundInternet(world: World, vmId: string, port: number):
   if (!subnetNsg) {
     trace.push({ step: "apply", ok: true, detail: `No network security group on ${subnet.name}. No NSG at this layer.` });
     const matched = nicNsg ? firstMatch(nicNsg, port, "outbound") : undefined;
-    return answered(trace, true, matched ? verdict(matched) : NOT_FILTERED, LEARN.nsgHowItWorks);
+    return finishOutbound(world, trace, subnet, matched ? verdict(matched) : NOT_FILTERED, LEARN.nsgHowItWorks);
   }
   const matched = firstMatch(subnetNsg, port, "outbound");
   trace.push({ step: "apply", ok: true, detail: `${subnet.name} uses ${subnetNsg.name}. ${ruleLine(matched)}` });
-  return answered(trace, matched.access === "Allow", verdict(matched), LEARN.nsgOverview);
+  if (matched.access === "Deny") return answered(trace, false, verdict(matched), LEARN.nsgOverview);
+  return finishOutbound(world, trace, subnet, verdict(matched), LEARN.nsgOverview);
+}
+
+function finishOutbound(world: World, trace: TraceLine[], subnet: Resource, summary: string, learnUrl: string): Result<InboundCheck> {
+  const route = userInternetRoute(world, subnet);
+  if (!route) return answered(trace, true, summary, learnUrl);
+  trace.push({
+    step: "apply",
+    ok: true,
+    detail: `${subnet.name} uses ${route.tableName}. routes/${route.name}, 0.0.0.0/0, next hop ${route.nextHop}.`,
+  });
+  if (route.nextHop === "None") {
+    trace.push({
+      step: "apply",
+      ok: true,
+      detail: "Traffic routed to the None next hop type is dropped rather than routed outside the subnet.",
+    });
+    return answered(trace, false, `Dropped. routes/${route.name}, 0.0.0.0/0, next hop None.`, LEARN.udr);
+  }
+  return answered(trace, true, summary, learnUrl);
+}
+
+function userInternetRoute(world: World, subnet: Resource): { name: string; nextHop: "None" | "Internet"; tableName: string } | null {
+  const tableId = subnet.properties.routeTableId;
+  if (typeof tableId !== "string") return null;
+  const table = world.resources[canonicalId(tableId)];
+  if (!table || !Array.isArray(table.properties.routes)) return null;
+  for (const route of table.properties.routes) {
+    if (!route || typeof route !== "object") continue;
+    const name = (route as { name?: unknown }).name;
+    const props = (route as { properties?: unknown }).properties;
+    if (typeof name !== "string" || !props || typeof props !== "object") continue;
+    const prefix = (props as { addressPrefix?: unknown }).addressPrefix;
+    const nextHop = (props as { nextHopType?: unknown }).nextHopType;
+    if (prefix === "0.0.0.0/0" && (nextHop === "None" || nextHop === "Internet")) {
+      return { name, nextHop, tableName: table.name };
+    }
+  }
+  return null;
 }
 
 export function checkSameVirtualNetwork(world: World, vmId: string, address: string, port: number): Result<InboundCheck> {

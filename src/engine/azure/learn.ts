@@ -24,6 +24,7 @@ export const LEARN = {
   nsgHowItWorks: "https://learn.microsoft.com/en-us/azure/virtual-network/network-security-group-how-it-works",
   publicIp: "https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/virtual-network-public-ip-address",
   routeTable: "https://learn.microsoft.com/en-us/azure/virtual-network/manage-route-table",
+  udr: "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-networks-udr-overview",
   vnet: "https://learn.microsoft.com/en-us/azure/virtual-network/manage-virtual-network",
   nic: "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-network-interface",
   peering: "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-manage-peering",

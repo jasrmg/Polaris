@@ -892,6 +892,158 @@ export function addSecurityRule(
   }, { policy: existing ? subjectFromResource(existing) : undefined });
 }
 
+export function addInternetRoute(
+  world: World,
+  subnetId: string,
+  input: { tableName: string; routeName: string; nextHop: "None" | "Internet" },
+): Result<World> {
+  const subnet = world.resources[canonicalId(subnetId)];
+  if (!subnet || !isType(subnet, "microsoft.network/virtualnetworks/subnets")) {
+    return failure([{ step: "parse", ok: true }], missing("subnet", subnetId, LEARN.subnet));
+  }
+  const routeName = input.routeName.trim();
+  if (routeName.length < 1 || routeName.length > 80) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "InvalidRouteName",
+      message: "Enter a route name of 1 to 80 characters. (sandbox wording)",
+      next: "Enter a name such as to-internet.",
+      step: "validate",
+      learnUrl: LEARN.routeTable,
+    });
+  }
+  const nextHop = input.nextHop === "Internet" ? "Internet" : input.nextHop === "None" ? "None" : null;
+  if (!nextHop) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "InvalidNextHop",
+      message: "Choose a next hop of None or Internet. (sandbox wording)",
+      next: "Choose None to drop traffic, or Internet to send it to the internet.",
+      step: "validate",
+      learnUrl: LEARN.udr,
+    });
+  }
+  const vnet = parentVirtualNetwork(world, subnet);
+  const location = vnet?.location ?? subnet.location;
+  const tableName = input.tableName.trim();
+  const existingTable = Object.values(world.resources).find(
+    (resource) =>
+      isType(resource, "microsoft.network/routetables") &&
+      sameName(resource.name, tableName) &&
+      sameName(resource.resourceGroup, subnet.resourceGroup) &&
+      resource.subscriptionId === subnet.subscriptionId,
+  );
+  const prepared = existingTable
+    ? { ok: true as const, value: world }
+    : createResource(world, {
+        armType: "Microsoft.Network/routeTables",
+        name: tableName,
+        resourceGroup: subnet.resourceGroup,
+        subscriptionId: subnet.subscriptionId,
+        location,
+        properties: { disableBgpRoutePropagation: false, routes: [] },
+      });
+  if (!prepared.ok || !prepared.value) return prepared.ok ? failure([{ step: "parse", ok: true }], missing("route table", tableName, LEARN.routeTable)) : prepared;
+  const ready = prepared.value;
+  const table = existingTable ?? Object.values(ready.resources).find(
+    (resource) =>
+      isType(resource, "microsoft.network/routetables") &&
+      sameName(resource.name, tableName) &&
+      sameName(resource.resourceGroup, subnet.resourceGroup),
+  );
+  if (!table) return failure([{ step: "parse", ok: true }], missing("route table", tableName, LEARN.routeTable));
+  return gate(ready, "PATCH", subnet.id, "Microsoft.Network/virtualNetworks/subnets", (current) => {
+    const currentSubnet = current.resources[canonicalId(subnet.id)];
+    const currentTable = current.resources[canonicalId(table.id)];
+    if (!currentSubnet || !currentTable) return { error: missing("route table", table.id, LEARN.routeTable) };
+    const actor = findActor(current, current.session.actingPrincipalId);
+    if (actor) {
+      for (const action of ["Microsoft.Network/routeTables/write", "Microsoft.Network/routeTables/join/action", "Microsoft.Network/routeTables/routes/write"]) {
+        const decision = evaluateAccess(current, { principalId: actor.id, action, scope: currentTable.id, plane: "control" });
+        if (decision.decision !== "allowed") {
+          return {
+            error: {
+              code: "AuthorizationFailed",
+              message: authorizationMessage(actor.displayName, actor.id, action, currentTable.id),
+              step: "authorize",
+              learnUrl: LEARN.authorizationFailed,
+            },
+          };
+        }
+      }
+    }
+    const regionOf = parentVirtualNetwork(current, currentSubnet)?.location ?? currentSubnet.location;
+    if (currentTable.subscriptionId !== currentSubnet.subscriptionId || currentTable.location.toLowerCase() !== regionOf.toLowerCase()) {
+      return {
+        error: {
+          code: "RouteTableRegionMismatch",
+          message: "You can only associate a route table to subnets in virtual networks that exist in the same Azure location and subscription as the route table.",
+          next: "Use a route table in the same region as the virtual network.",
+          step: "validate",
+          learnUrl: LEARN.routeTable,
+        },
+      };
+    }
+    const currentTableId = typeof currentSubnet.properties.routeTableId === "string" ? canonicalId(currentSubnet.properties.routeTableId) : "";
+    if (currentTableId && currentTableId !== canonicalId(currentTable.id)) {
+      return {
+        error: {
+          code: "RouteTableAlreadyAssociated",
+          message: "Each subnet can have zero or one route table associated to it.",
+          next: "Keep the route table already on this subnet, or reset the subscription. This page cannot replace it.",
+          step: "validate",
+          learnUrl: LEARN.udr,
+        },
+      };
+    }
+    const existingRoutes = Array.isArray(currentTable.properties.routes) ? currentTable.properties.routes : [];
+    const named = existingRoutes.some((route) => route && typeof route === "object" && sameName(String((route as { name?: unknown }).name ?? ""), routeName));
+    if (named) {
+      return {
+        error: {
+          code: "DuplicateRouteName",
+          message: "Enter a unique Route name for the route within the route table.",
+          next: "Enter a different route name.",
+          step: "validate",
+          learnUrl: LEARN.routeTable,
+        },
+      };
+    }
+    const duplicatePrefix = existingRoutes.some((route) => {
+      if (!route || typeof route !== "object") return false;
+      const props = (route as { properties?: unknown }).properties;
+      if (!props || typeof props !== "object") return false;
+      return (props as { addressPrefix?: unknown }).addressPrefix === "0.0.0.0/0";
+    });
+    if (duplicatePrefix) {
+      return {
+        error: {
+          code: "DuplicateRoutePrefix",
+          message: "The prefix can't be duplicated in more than one route within the route table, though the prefix can be within another prefix.",
+          next: "This subnet already has a 0.0.0.0/0 route. Reset the subscription if you need a different one.",
+          step: "validate",
+          learnUrl: LEARN.routeTable,
+        },
+      };
+    }
+    const tablePolicy = evaluatePolicy(current, subjectFromResource(currentTable));
+    if (tablePolicy.error) return { error: tablePolicy.error };
+    const next = cloneWorld(current);
+    const nextSubnet = next.resources[canonicalId(currentSubnet.id)];
+    const nextTable = next.resources[canonicalId(currentTable.id)];
+    nextSubnet.properties = {
+      ...nextSubnet.properties,
+      routeTableId: currentTable.id,
+      routeTable: { id: currentTable.id },
+      provisioningState: "Succeeded",
+    };
+    nextTable.properties = {
+      ...nextTable.properties,
+      routes: [...existingRoutes, { name: routeName, properties: { addressPrefix: "0.0.0.0/0", nextHopType: nextHop } }],
+      provisioningState: "Succeeded",
+    };
+    return { world: replaceResourcePolicyStates(next, currentTable.id, tablePolicy.states) };
+  }, { policy: subjectFromResource(subnet) });
+}
+
 export function associateNicSecurityGroup(world: World, nicId: string, nsgId: string): Result<World> {
   const existing = world.resources[canonicalId(nicId)];
   return gate(world, "PATCH", nicId, "Microsoft.Network/networkInterfaces", (current) => {
@@ -1506,7 +1658,7 @@ function deleteBlocked(world: World, resource: Resource): EngineError | null {
     return quote("You can't delete an application security group if it contains any network interfaces.", LEARN.nsg);
   }
   if (typeKey === "microsoft.network/routetables" && mentions((other) => referencedIds(other).some((ref) => canonicalId(ref) === id))) {
-    return quote("You can't delete a route table associated to any subnets.", LEARN.routeTable);
+    return quote("You can't delete a route table associated to any subnets.", LEARN.routeTable, "This page cannot remove an association. Reset the subscription if you need to delete this table.");
   }
   if (typeKey === "microsoft.network/publicipaddresses" && mentions((other) => referencedIds(other).some((ref) => canonicalId(ref) === id))) {
     return quote(

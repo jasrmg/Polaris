@@ -58,6 +58,19 @@ function linkLines(resource: Resource, resources: Resource[], world: World): str
   if (pipId) lines.push(`Public IP address: ${named(resources, pipId)}`);
   const nsgId = firstId(resource.properties.networkSecurityGroupId);
   if (nsgId) lines.push(`Network security group: ${named(resources, nsgId)}`);
+  const routeTableId = firstId(resource.properties.routeTableId);
+  if (routeTableId) lines.push(`Route table: ${named(resources, routeTableId)}`);
+  if (Array.isArray(resource.properties.routes)) {
+    for (const route of resource.properties.routes) {
+      if (!route || typeof route !== "object") continue;
+      const name = (route as { name?: unknown }).name;
+      const props = (route as { properties?: unknown }).properties;
+      if (typeof name !== "string" || !props || typeof props !== "object") continue;
+      const prefix = (props as { addressPrefix?: unknown }).addressPrefix;
+      const nextHop = (props as { nextHopType?: unknown }).nextHopType;
+      if (typeof prefix === "string" && typeof nextHop === "string") lines.push(`Route ${name}, ${prefix}, next hop ${nextHop}.`);
+    }
+  }
   const rules = resource.properties.securityRules;
   if (!Array.isArray(rules)) return lines;
   for (const rule of rules) {
@@ -223,6 +236,17 @@ export function EnvironmentView() {
       port: Number(data.get("port")),
       priority: Number(data.get("priority")),
       access: data.get("access") === "Deny" ? "Deny" : "Allow",
+    }));
+  }
+
+  function addSubnetRoute(subnetId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const nextHop = data.get("nextHop") === "Internet" ? "Internet" : "None";
+    void run((engine, current) => engine.addInternetRoute(current, subnetId, {
+      tableName: String(data.get("tableName") ?? ""),
+      routeName: String(data.get("routeName") ?? ""),
+      nextHop,
     }));
   }
 
@@ -417,7 +441,7 @@ export function EnvironmentView() {
                               />
                               <CheckForm
                                 label="Outbound to the internet, destination port"
-                                note="A new TCP connection from the virtual machine to the internet. The network interface is checked first. An inbound rule does not decide this."
+                                note="A new TCP connection from the virtual machine to the internet. The network interface is checked first. An inbound rule does not decide this. A 0.0.0.0/0 route on the subnet is used after the security groups allow the traffic. Peering and DNS are not part of this check."
                                 result={checks[`${resource.id}:out`]}
                                 onSubmit={(event) => checkTraffic(resource.id, "out", event)}
                               />
@@ -434,7 +458,7 @@ export function EnvironmentView() {
                                   <Button type="submit" size="sm">Check</Button>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  A new TCP connection to an address inside this virtual network. The way out is checked first, then the destination subnet, then the network interface that has that address. Routes, peering, DNS, and power state are not part of this check.
+                                  A new TCP connection to an address inside this virtual network. The way out is checked first, then the destination subnet, then the network interface that has that address. A 0.0.0.0/0 route does not decide this. Peering, DNS, and power state are not part of this check.
                                 </p>
                                 {checks[`${resource.id}:vnet`] && (
                                   <div className="rounded-lg border p-3 text-sm">
@@ -525,7 +549,8 @@ export function EnvironmentView() {
                             </form>
                           )}
                           {isSubnet && (
-                            nsgs.length === 0 ? (
+                            <>
+                            {nsgs.length === 0 ? (
                               <p className="mt-3 text-sm text-muted-foreground">Create a network security group in this group to associate one.</p>
                             ) : (
                               <form className="mt-3 grid gap-2" onSubmit={(event) => associateNsg(resource.id, event)}>
@@ -557,7 +582,31 @@ export function EnvironmentView() {
                                 </p>
                                 <Button type="submit" size="sm" className="w-fit">Associate and add rule</Button>
                               </form>
-                            )
+                            )}
+                            <form className="mt-3 grid gap-2" onSubmit={(event) => addSubnetRoute(resource.id, event)}>
+                              <div className="grid gap-2 sm:grid-cols-3">
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Route table
+                                  <Input name="tableName" defaultValue="rt-app" />
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Route name
+                                  <Input name="routeName" defaultValue="to-internet" />
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Next hop
+                                  <select name="nextHop" className={selectClass} defaultValue="None">
+                                    <option value="None">None</option>
+                                    <option value="Internet">Internet</option>
+                                  </select>
+                                </label>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                One route for 0.0.0.0/0. None drops outbound internet traffic after the security groups allow it. Internet sends that traffic to the internet. An address inside the virtual network keeps the longer system route. A subnet can have one route table, and this prefix can be used once.
+                              </p>
+                              <Button type="submit" size="sm" className="w-fit">Add route</Button>
+                            </form>
+                            </>
                           )}
                         </li>
                       );

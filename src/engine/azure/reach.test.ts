@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   addInboundRule,
+  addInternetRoute,
   addSecurityRule,
   associateNicSecurityGroup,
   attachNetworkInterface,
@@ -258,6 +259,60 @@ describe("inbound internet check", () => {
     const clash = addSecurityRule(ruled, nsgId, { direction: "Outbound", port: 80, access: "Allow", priority: 200, scope: "internet" });
     assert.equal(clash.ok, false);
     assert.equal(clash.error?.code, "DuplicateRulePriority");
+  });
+
+  it("drops outbound internet traffic on a None route and leaves the other checks alone", () => {
+    const { world, vmId, subnetId } = linkedWorld();
+    const routed = must(addInternetRoute(world, subnetId, { tableName: "rt-app", routeName: "to-internet", nextHop: "None" }));
+    const dropped = checkOutboundInternet(routed, vmId, 443);
+    assert.equal(dropped.value?.allowed, false);
+    assert.match(dropped.value?.summary ?? "", /Dropped\. routes\/to-internet, 0\.0\.0\.0\/0, next hop None/);
+    assert.match(dropped.trace.map((line) => line.detail ?? "").join("\n"), /dropped rather than routed outside the subnet/);
+    const inbound = checkInboundInternet(routed, vmId, 443);
+    assert.equal(inbound.value?.allowed, false);
+    assert.equal((inbound.value?.summary ?? "").includes("to-internet"), false);
+    const inside = checkSameVirtualNetwork(routed, vmId, "10.0.1.4", 443);
+    assert.equal(inside.value?.allowed, true);
+    assert.equal((inside.value?.summary ?? "").includes("to-internet"), false);
+
+    const { world: deniedWorld, vmId: deniedVm, subnetId: deniedSubnet, nsgId } = linkedWorld();
+    const associated = must(addInboundRule(deniedWorld, deniedSubnet, nsgId, { port: 80, access: "Allow", priority: 100 }));
+    const withDeny = must(addSecurityRule(associated, nsgId, { direction: "Outbound", port: 443, access: "Deny", priority: 100 }));
+    const stillDenied = must(addInternetRoute(withDeny, deniedSubnet, { tableName: "rt-app", routeName: "to-internet", nextHop: "None" }));
+    const outbound = checkOutboundInternet(stillDenied, deniedVm, 443);
+    assert.match(outbound.value?.summary ?? "", /securityRules\/Deny-443-Outbound-100/);
+    assert.equal((outbound.trace.map((line) => line.detail ?? "").join("\n")).includes("next hop None"), false);
+
+    const allowedPort = checkOutboundInternet(stillDenied, deniedVm, 80);
+    assert.match(allowedPort.value?.summary ?? "", /routes\/to-internet, 0\.0\.0\.0\/0, next hop None/);
+
+    const viaInternet = must(addInternetRoute(world, subnetId, { tableName: "rt-web", routeName: "to-internet", nextHop: "Internet" }));
+    const open = checkOutboundInternet(viaInternet, vmId, 443);
+    assert.equal(open.value?.allowed, true);
+    assert.match(open.value?.summary ?? "", /not filtered/);
+    assert.match(open.trace.map((line) => line.detail ?? "").join("\n"), /next hop Internet/);
+
+    const again = addInternetRoute(routed, subnetId, { tableName: "rt-app", routeName: "also-internet", nextHop: "Internet" });
+    assert.equal(again.ok, false);
+    assert.equal(again.error?.code, "DuplicateRoutePrefix");
+    assert.match(again.error?.message ?? "", /can't be duplicated/);
+    const otherTable = addInternetRoute(routed, subnetId, { tableName: "rt-other", routeName: "to-internet", nextHop: "None" });
+    assert.equal(otherTable.ok, false);
+    assert.equal(otherTable.error?.code, "RouteTableAlreadyAssociated");
+    const removed = deleteResource(routed, Object.values(routed.resources).find((resource) => resource.name === "rt-app")!.id);
+    assert.equal(removed.ok, false);
+    assert.match(removed.error?.message ?? "", /associated to any subnets/);
+    assert.match(removed.error?.next ?? "", /Reset the subscription/);
+
+    const elsewhere = must(createResource(world, {
+      armType: "Microsoft.Network/routeTables",
+      name: "rt-east",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+    }));
+    const mismatch = addInternetRoute(elsewhere, subnetId, { tableName: "rt-east", routeName: "to-internet", nextHop: "None" });
+    assert.equal(mismatch.ok, false);
+    assert.equal(mismatch.error?.code, "RouteTableRegionMismatch");
   });
 
   it("allows a private address in the virtual network, and ignores an internet rule", () => {
