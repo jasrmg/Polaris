@@ -131,11 +131,11 @@ parse → authenticate (acting identity) → authorize (RBAC.md) → subscriptio
 Every step returns either `ok` or a structured error:
 
 ```ts
-interface EngineError { code: string; message: string; target?: string; details?: EngineError[]; step: string; learnUrl?: string }
+interface EngineError { code: string; message: string; target?: string; details?: EngineError[]; step: string; learnUrl?: string; next?: string }
 interface Result<T> { ok: boolean; value?: T; error?: EngineError; trace: TraceLine[]; world: World }
 ```
 
-`code` and `message` use Learn's documented codes and text where Learn has them (`AuthorizationFailed`, `ResourceNotFound`, `AccountNameInvalid`, `StorageAccountAlreadyTaken`, see `CLOUDSHELL.md` section 8) and say "(sandbox wording)" where Learn has only the code.
+`code` and `message` use Learn's documented codes and text where Learn has them (`AuthorizationFailed`, `ResourceNotFound`, `AccountNameInvalid`, `StorageAccountAlreadyTaken`, see `CLOUDSHELL.md` section 8) and say "(sandbox wording)" where Learn has only the code. `next` is sandbox guidance for a page that exists. It is not Learn text. It is left off when the message already says what to change, and when the fix is not on a page yet.
 
 ### 4.2 Provisioning state [Learn, S15][S16][S18][S20]
 

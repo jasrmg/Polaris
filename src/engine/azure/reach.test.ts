@@ -220,6 +220,7 @@ describe("inbound internet check", () => {
     assert.equal(again.ok, false);
     assert.equal(again.error?.code, "DuplicateRulePriority");
     assert.match(again.error?.message ?? "", /same priority and direction/);
+    assert.match(again.error?.next ?? "", /different priority/);
 
     const low = addSecurityRule(ruled, nsgId, { direction: "Outbound", port: 443, access: "Deny", priority: 50 });
     assert.equal(low.ok, false);
@@ -233,6 +234,7 @@ describe("inbound internet check", () => {
     const removed = deleteResource(associated, nsgId);
     assert.equal(removed.ok, false);
     assert.match(removed.error?.message ?? "", /can't delete it/);
+    assert.match(removed.error?.next ?? "", /Reset the subscription/);
     const checked = checkInboundInternet(associated, vmId, 443);
     assert.equal(checked.value?.allowed, true);
     assert.match(checked.trace.map((line) => line.detail ?? "").join("\n"), /nic-web-01 uses nsg-web/);

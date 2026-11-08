@@ -11,6 +11,8 @@ export interface EngineError {
   step: string;
   /** Learn page this rule comes from, when the rule is documented. */
   learnUrl?: string;
+  /** What to do on the current page. Sandbox guidance, not Learn text. */
+  next?: string;
 }
 
 export interface TraceLine {

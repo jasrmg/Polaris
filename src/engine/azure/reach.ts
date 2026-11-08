@@ -196,6 +196,7 @@ function openPath(world: World, vmId: string, port: number, detail: string): Pat
       message: "Record one destination port, from 1 to 65535. (sandbox wording)",
       step: "validate",
       learnUrl: LEARN.nsgOverview,
+      next: "Enter a whole number from 1 to 65535.",
     });
   }
   const vm = world.resources[canonicalId(vmId)];

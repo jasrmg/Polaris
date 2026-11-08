@@ -381,6 +381,7 @@ export function createResourceGroup(
           message: `A resource group named ${input.name} already exists in this subscription. Names are case-insensitive. (sandbox wording)`,
           step: "validate",
           learnUrl: LEARN.names,
+          next: "Type a different name.",
         },
       };
     }
@@ -612,6 +613,7 @@ export function createResource(world: World, input: CreateResourceInput, options
             message: `The public IP DNS label ${label} is not available in ${location} in this sandbox. (sandbox wording)`,
             step: "validate",
             learnUrl: LEARN.publicIp,
+            next: "Type a different label, or leave the label empty.",
           },
         };
       }
@@ -685,6 +687,7 @@ export function attachNetworkInterface(world: World, vmId: string, nicId: string
         error: {
           code: "NicRegionMismatch",
           message: "A network interface is recorded in the same subscription and region as the virtual machine. (sandbox wording)",
+          next: "Create the network interface in the same region as the virtual machine.",
           step: "validate",
           learnUrl: LEARN.nic,
         },
@@ -701,6 +704,7 @@ export function attachNetworkInterface(world: World, vmId: string, nicId: string
         error: {
           code: "NicInUse",
           message: `Network interface ${nic.name} is already attached to ${taken.name}. (sandbox wording)`,
+          next: "Pick a network interface that is not already attached, or create a new one.",
           step: "validate",
           learnUrl: LEARN.nic,
         },
@@ -730,6 +734,7 @@ export function attachPublicIp(world: World, nicId: string, publicIpId: string):
         error: {
           code: "PublicIpRegionMismatch",
           message: "A public IP address must be in the same region as the resource you attach it to. (sandbox wording)",
+          next: "Create the public IP in the same region as the network interface.",
           step: "validate",
           learnUrl: LEARN.publicIp,
         },
@@ -743,6 +748,7 @@ export function attachPublicIp(world: World, nicId: string, publicIpId: string):
         error: {
           code: "PublicIpInUse",
           message: `Public IP address ${pip.name} is already associated with ${taken.name}. (sandbox wording)`,
+          next: "Pick a public IP that is not already attached, or create a new one.",
           step: "validate",
           learnUrl: LEARN.publicIp,
         },
@@ -796,6 +802,7 @@ export function addInboundRule(
           message: "An NSG must be in the same subscription and region as the virtual network of any subnet you associate it with. (sandbox wording)",
           step: "validate",
           learnUrl: LEARN.nsg,
+          next: "Create the network security group in the same region as the virtual network, then select it.",
         },
       };
     }
@@ -807,6 +814,7 @@ export function addInboundRule(
           message: `Subnet ${subnet.name} is already associated with another network security group. (sandbox wording)`,
           step: "validate",
           learnUrl: LEARN.nsg,
+          next: "Keep the group already on this subnet, or reset the subscription. This page cannot replace it.",
         },
       };
     }
@@ -879,6 +887,7 @@ export function associateNicSecurityGroup(world: World, nicId: string, nsgId: st
           message: `${nic.name} is not in a subnet. (sandbox wording)`,
           step: "validate",
           learnUrl: LEARN.nic,
+          next: "Create the network interface on a subnet first.",
         },
       };
     }
@@ -891,6 +900,7 @@ export function associateNicSecurityGroup(world: World, nicId: string, nsgId: st
           message: "The NSG must be in the same subscription and region as the virtual network. (sandbox wording)",
           step: "validate",
           learnUrl: LEARN.nsg,
+          next: "Create the network security group in the same region as the virtual network, then select it.",
         },
       };
     }
@@ -902,6 +912,7 @@ export function associateNicSecurityGroup(world: World, nicId: string, nsgId: st
           message: `Network interface ${nic.name} is already associated with another network security group. (sandbox wording)`,
           step: "validate",
           learnUrl: LEARN.nsg,
+          next: "Keep the group already on this network interface, or reset the subscription. This page cannot replace it.",
         },
       };
     }
@@ -955,6 +966,7 @@ export function deleteResourceGroup(world: World, id: string): Result<World> {
             step: "validate",
             learnUrl: LEARN.deleteGroup,
             target: hit,
+            next: "Delete the resource in the other group that points here, then try again.",
           },
         };
       }
@@ -982,6 +994,7 @@ export function setPower(world: World, id: string, action: "start" | "stop" | "d
           message: `Cannot ${action} a virtual machine that is ${power}. (sandbox wording)`,
           step: "validate",
           learnUrl: LEARN.vmCli,
+          next: "Start works from Stopped or Deallocated. Stop works from Running. Deallocate works from Running or Stopped.",
         },
       };
     }
@@ -1275,6 +1288,7 @@ function ruleInputError(input: { port: number; access: string; priority: number 
       message: "Record one destination port, from 1 to 65535. (sandbox wording)",
       step: "validate",
       learnUrl: LEARN.nsgOverview,
+      next: "Enter a whole number from 1 to 65535.",
     };
   }
   if (!Number.isInteger(input.priority) || input.priority < 100 || input.priority > 4096) {
@@ -1283,6 +1297,7 @@ function ruleInputError(input: { port: number; access: string; priority: number 
       message: "Priority is a number between 100 and 4096. (sandbox wording)",
       step: "validate",
       learnUrl: LEARN.nsgOverview,
+      next: "Enter a whole number from 100 to 4096.",
     };
   }
   if (input.access !== "Allow" && input.access !== "Deny") {
@@ -1307,6 +1322,7 @@ function duplicateRuleError(existingRules: unknown[], direction: string, priorit
       message: "You can't create two rules with the same priority and direction.",
       step: "validate",
       learnUrl: LEARN.nsgOverview,
+      next: "Use a different priority. The same number is allowed once in each direction. This page cannot change or remove a rule.",
     };
   }
   if (existingRules.some((rule) => ruleName(rule).toLowerCase() === name.toLowerCase())) {
@@ -1315,6 +1331,7 @@ function duplicateRuleError(existingRules: unknown[], direction: string, priorit
       message: `A rule named ${name} already exists in ${nsgName}. (sandbox wording)`,
       step: "validate",
       learnUrl: LEARN.nsgOverview,
+      next: "Change the port, action, or priority. The name is built from those.",
     };
   }
   return null;
@@ -1380,6 +1397,7 @@ function uniquenessError(world: World, typeKey: string, name: string, group: Res
       step: "validate",
       learnUrl: LEARN.storageCreate,
       target: name,
+      next: "Type a different name. This check only looks inside the sandbox.",
     };
   }
   return {
@@ -1390,6 +1408,7 @@ function uniquenessError(world: World, typeKey: string, name: string, group: Res
     step: "validate",
     learnUrl: LEARN.names,
     target: name,
+    next: "Type a different name.",
   };
 }
 
@@ -1439,7 +1458,7 @@ function deleteBlocked(world: World, resource: Resource): EngineError | null {
   const mentions = (field: (other: Resource) => boolean) => refs.some(field);
 
   if (typeKey === "microsoft.network/virtualnetworks/subnets" && mentions((other) => referencedIds(other).some((ref) => canonicalId(ref) === id))) {
-    return quote("You can delete a subnet only if there are no resources in the subnet.", LEARN.subnet);
+    return quote("You can delete a subnet only if there are no resources in the subnet.", LEARN.subnet, "Delete the network interface in this subnet first. If a virtual machine uses that interface, delete the virtual machine first.");
   }
   if (typeKey === "microsoft.network/virtualnetworks") {
     const subnetIds = new Set(
@@ -1449,14 +1468,14 @@ function deleteBlocked(world: World, resource: Resource): EngineError | null {
     );
     subnetIds.add(id);
     if (mentions((other) => referencedIds(other).some((ref) => subnetIds.has(canonicalId(ref))))) {
-      return quote("You can delete a virtual network only if there are no resources connected to it.", LEARN.vnet);
+      return quote("You can delete a virtual network only if there are no resources connected to it.", LEARN.vnet, "Delete the network interfaces on its subnets first. Delete a virtual machine that uses one of those interfaces before the interface.");
     }
   }
   if (typeKey === "microsoft.network/networkinterfaces" && mentions((other) => referencedIds(other).some((ref) => canonicalId(ref) === id))) {
-    return quote("You can delete a NIC only when the NIC isn't attached to a VM.", LEARN.nic);
+    return quote("You can delete a NIC only when the NIC isn't attached to a VM.", LEARN.nic, "Delete the virtual machine that uses this network interface first.");
   }
   if (typeKey === "microsoft.network/networksecuritygroups" && mentions((other) => referencedIds(other).includes(resource.id) || referencedIds(other).some((ref) => canonicalId(ref) === id))) {
-    return quote("If an NSG is associated with any subnets or network interfaces, you can't delete it.", LEARN.nsg);
+    return quote("If an NSG is associated with any subnets or network interfaces, you can't delete it.", LEARN.nsg, "This page cannot remove an association. Reset the subscription if you need to delete this group.");
   }
   if (typeKey === "microsoft.network/applicationsecuritygroups" && mentions((other) => referencedIds(other).some((ref) => canonicalId(ref) === id))) {
     return quote("You can't delete an application security group if it contains any network interfaces.", LEARN.nsg);
@@ -1468,6 +1487,7 @@ function deleteBlocked(world: World, resource: Resource): EngineError | null {
     return quote(
       "Deletion of public IPs requires that the public IP object isn't associated to any IP configuration or virtual machine network interface.",
       LEARN.publicIp,
+      "This page cannot detach an address. Reset the subscription if you need to delete it.",
     );
   }
   if (typeKey === "microsoft.recoveryservices/vaults") {
@@ -1487,8 +1507,8 @@ function deleteBlocked(world: World, resource: Resource): EngineError | null {
   return null;
 }
 
-function quote(message: string, learnUrl: string): EngineError {
-  return { code: "DeleteBlocked", message, step: "validate", learnUrl };
+function quote(message: string, learnUrl: string, next?: string): EngineError {
+  return { code: "DeleteBlocked", message, step: "validate", learnUrl, next };
 }
 
 function disconnectPeer(world: World, deleted: Resource): void {

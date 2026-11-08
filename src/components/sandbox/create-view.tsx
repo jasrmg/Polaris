@@ -361,6 +361,7 @@ export function CreateView({ slug }: { slug: TrySlug }) {
         {error && (
           <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
             <p className="min-w-0 [overflow-wrap:anywhere]">{error.message}</p>
+            {error.next && <p className="mt-1 min-w-0 [overflow-wrap:anywhere]">Next: {error.next}</p>}
             <p className="mt-1 text-muted-foreground">Stopped at {error.step} ({error.code}).</p>
             {error.learnUrl && (
               <a href={error.learnUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-primary underline-offset-4 hover:underline">

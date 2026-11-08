@@ -312,29 +312,29 @@ export function addressPrefixes(resource: Resource): Cidr[] {
   return parsed;
 }
 
-export function cidrError(message: string, target?: string): EngineError {
-  return { code: "InvalidAddressPrefix", message, step: "validate", learnUrl: LEARN.subnet, target };
+export function cidrError(message: string, target?: string, next?: string): EngineError {
+  return { code: "InvalidAddressPrefix", message, step: "validate", learnUrl: LEARN.subnet, target, next };
 }
 
 export function validateSubnetPrefix(parent: Resource, prefix: string, siblings: Resource[]): EngineError | null {
   const cidr = parseCidr(prefix);
-  if ("error" in cidr) return cidrError(cidr.error, prefix);
+  if ("error" in cidr) return cidrError(cidr.error, prefix, "Use an IPv4 range such as 10.0.1.0/24.");
   if (subnetTooSmall(cidr)) {
-    return cidrError("Azure reserves five addresses in a subnet, so a prefix more specific than /29 does not fit. (sandbox wording)", prefix);
+    return cidrError("Azure reserves five addresses in a subnet, so a prefix more specific than /29 does not fit. (sandbox wording)", prefix, "Use /29 or a wider prefix, such as /24.");
   }
   const parents = addressPrefixes(parent);
   if (parents.length === 0) {
-    return cidrError("The virtual network has no address space for this subnet. (sandbox wording)", parent.id);
+    return cidrError("The virtual network has no address space for this subnet. (sandbox wording)", parent.id, "Give the virtual network an address space first.");
   }
   if (!parents.some((outer) => containsCidr(outer, cidr))) {
-    return cidrError("A subnet's address prefix must fit inside its virtual network. (sandbox wording)", prefix);
+    return cidrError("A subnet's address prefix must fit inside its virtual network. (sandbox wording)", prefix, "Use a prefix inside the virtual network's address space.");
   }
   for (const sibling of siblings) {
     const other = sibling.properties.addressPrefix;
     if (typeof other !== "string") continue;
     const parsed = parseCidr(other);
     if (!("error" in parsed) && overlapsCidr(cidr, parsed)) {
-      return cidrError(`Subnet prefixes overlap: ${prefix} and ${other}. (sandbox wording)`, prefix);
+      return cidrError(`Subnet prefixes overlap: ${prefix} and ${other}. (sandbox wording)`, prefix, "Use a prefix that does not overlap the other subnet.");
     }
   }
   return null;
@@ -342,18 +342,18 @@ export function validateSubnetPrefix(parent: Resource, prefix: string, siblings:
 
 export function validateVnetPrefixes(prefixes: string[]): EngineError | null {
   if (prefixes.length === 0) {
-    return cidrError("A virtual network needs an address space. (sandbox wording)");
+    return cidrError("A virtual network needs an address space. (sandbox wording)", undefined, "Enter an address space, such as 10.0.0.0/16.");
   }
   const parsed: Cidr[] = [];
   for (const prefix of prefixes) {
     const cidr = parseCidr(prefix);
-    if ("error" in cidr) return cidrError(cidr.error, prefix);
+    if ("error" in cidr) return cidrError(cidr.error, prefix, "Use an IPv4 range such as 10.0.0.0/16.");
     if (subnetTooSmall(cidr)) {
-      return cidrError("An address prefix more specific than /29 cannot hold a subnet. Azure reserves five addresses. (sandbox wording)", prefix);
+      return cidrError("An address prefix more specific than /29 cannot hold a subnet. Azure reserves five addresses. (sandbox wording)", prefix, "Use /29 or a wider prefix, such as /16.");
     }
     for (const existing of parsed) {
       if (overlapsCidr(existing, cidr)) {
-        return cidrError(`Address prefixes overlap: ${prefix}. (sandbox wording)`, prefix);
+        return cidrError(`Address prefixes overlap: ${prefix}. (sandbox wording)`, prefix, "Remove the overlapping prefix.");
       }
     }
     parsed.push(cidr);
