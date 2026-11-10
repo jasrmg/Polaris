@@ -1121,6 +1121,76 @@ export function setForwardedTraffic(world: World, localVnetId: string, remoteVne
   }, { policy: subjectFromResource(localLink) });
 }
 
+export function setPeeringOptions(
+  world: World,
+  localVnetId: string,
+  remoteVnetId: string,
+  options: { forwarded: boolean; allowGatewayTransit: boolean; useRemoteGateways: boolean },
+): Result<World> {
+  const local = world.resources[canonicalId(localVnetId)];
+  const remote = world.resources[canonicalId(remoteVnetId)];
+  if (!local || !isType(local, "microsoft.network/virtualnetworks")) {
+    return failure([{ step: "parse", ok: true }], missing("virtual network", localVnetId, LEARN.vnet));
+  }
+  if (!remote || !isType(remote, "microsoft.network/virtualnetworks")) {
+    return failure([{ step: "parse", ok: true }], missing("virtual network", remoteVnetId, LEARN.vnet));
+  }
+  const localLink = peeringBetween(world, local, remote);
+  const remoteLink = peeringBetween(world, remote, local);
+  if (!localLink || !remoteLink) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "PeeringNotConnected",
+      message: "The peering isn't successfully established until the peering status for both virtual network peerings is Connected.",
+      next: "Peer the two virtual networks. This page creates both links.",
+      step: "validate",
+      learnUrl: LEARN.peering,
+    });
+  }
+  if (options.useRemoteGateways) {
+    if (remoteLink.properties.allowGatewayTransit !== true) {
+      return failure([{ step: "parse", ok: true }], {
+        code: "RemoteGatewayTransitDisabled",
+        message: "Use remote gateway needs Allow gateway transit on the other virtual network's link. (sandbox wording)",
+        next: "Open the other virtual network, set Allow gateway transit to Enabled, then set Use remote gateway here.",
+        step: "validate",
+        learnUrl: LEARN.peering,
+      });
+    }
+    const prefix = `${canonicalId(local.id)}/virtualnetworkpeerings/`;
+    const already = Object.values(world.resources).find((resource) =>
+      isType(resource, "microsoft.network/virtualnetworks/virtualnetworkpeerings") &&
+      canonicalId(resource.id).startsWith(prefix) &&
+      canonicalId(resource.id) !== canonicalId(localLink.id) &&
+      resource.properties.useRemoteGateways === true,
+    );
+    if (already) {
+      return failure([{ step: "parse", ok: true }], {
+        code: "RemoteGatewayAlreadyUsed",
+        message: "Use remote gateway can be set on only one peering of a virtual network. (sandbox wording)",
+        next: "Turn Use remote gateway off on the other peering first.",
+        step: "validate",
+        learnUrl: LEARN.peering,
+      });
+    }
+  }
+  return gate(world, "PATCH", localLink.id, "Microsoft.Network/virtualNetworks/virtualNetworkPeerings", (current) => {
+    const next = cloneWorld(current);
+    for (const id of [localLink.id, remoteLink.id]) {
+      const target = next.resources[canonicalId(id)];
+      if (!target) return { error: missing("peering", id, LEARN.peering) };
+      target.properties = { ...target.properties, allowForwardedTraffic: options.forwarded, provisioningState: "Succeeded" };
+    }
+    const localTarget = next.resources[canonicalId(localLink.id)];
+    localTarget.properties = {
+      ...localTarget.properties,
+      allowGatewayTransit: options.allowGatewayTransit,
+      useRemoteGateways: options.useRemoteGateways,
+      provisioningState: "Succeeded",
+    };
+    return { world: next };
+  }, { policy: subjectFromResource(localLink) });
+}
+
 export function setIpForwarding(world: World, nicId: string, enabled: boolean): Result<World> {
   const existing = world.resources[canonicalId(nicId)];
   return gate(world, "PATCH", nicId, "Microsoft.Network/networkInterfaces", (current) => {

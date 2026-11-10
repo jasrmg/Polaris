@@ -6,6 +6,7 @@ import {
   addSecurityRule,
   peerVirtualNetworks,
   setForwardedTraffic,
+  setPeeringOptions,
   setIpForwarding,
   associateNicSecurityGroup,
   attachNetworkInterface,
@@ -763,6 +764,69 @@ describe("inbound internet check", () => {
     const normalTrace = normal.trace.map((line) => line.detail ?? "").join("\n");
     assert.match(normalTrace, /nic-hub has 10\.2\.0\.4/);
     assert.equal(normalTrace.includes("Forwarded traffic:"), false);
+  });
+
+  it("records gateway transit on one link and does not carry traffic", () => {
+    const { world, vmId } = linkedWorld();
+    const hub = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-hub",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.2.0.0/16"] } },
+    }));
+    const hubId = Object.values(hub.resources).find((resource) => resource.name === "vnet-hub")!.id;
+    const seaId = Object.values(world.resources).find((resource) => resource.name === "vnet-sea")!.id;
+    const peered = must(peerVirtualNetworks(hub, seaId, hubId));
+    const before = JSON.stringify(peered);
+    const early = setPeeringOptions(peered, seaId, hubId, { forwarded: false, allowGatewayTransit: false, useRemoteGateways: true });
+    assert.equal(early.error?.code, "RemoteGatewayTransitDisabled");
+    assert.match(early.error?.next ?? "", /Allow gateway transit to Enabled/);
+    assert.equal(JSON.stringify(peered), before);
+
+    const hubTransit = must(setPeeringOptions(peered, hubId, seaId, { forwarded: true, allowGatewayTransit: true, useRemoteGateways: false }));
+    const spoke = must(setPeeringOptions(hubTransit, seaId, hubId, { forwarded: true, allowGatewayTransit: false, useRemoteGateways: true }));
+    const hubLink = Object.values(spoke.resources).find((resource) => resource.name === "vnet-hub-to-vnet-sea")!;
+    const spokeLink = Object.values(spoke.resources).find((resource) => resource.name === "vnet-sea-to-vnet-hub")!;
+    assert.equal(hubLink.properties.allowGatewayTransit, true);
+    assert.equal(hubLink.properties.useRemoteGateways, false);
+    assert.equal(spokeLink.properties.useRemoteGateways, true);
+    assert.equal(spokeLink.properties.allowGatewayTransit, false);
+    assert.equal(hubLink.properties.allowForwardedTraffic, true);
+    assert.equal(spokeLink.properties.allowForwardedTraffic, true);
+
+    const third = must(createResource(spoke, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-extra",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.3.0.0/16"] } },
+    }));
+    const extraId = Object.values(third.resources).find((resource) => resource.name === "vnet-extra")!.id;
+    const again = must(peerVirtualNetworks(third, seaId, extraId));
+    const extraTransit = must(setPeeringOptions(again, extraId, seaId, { forwarded: false, allowGatewayTransit: true, useRemoteGateways: false }));
+    const second = setPeeringOptions(extraTransit, seaId, extraId, { forwarded: false, allowGatewayTransit: false, useRemoteGateways: true });
+    assert.equal(second.error?.code, "RemoteGatewayAlreadyUsed");
+
+    const withSubnet = must(createResource(spoke, {
+      armType: "Microsoft.Network/virtualNetworks/subnets",
+      name: "snet-hub",
+      resourceGroup: "rg-demo",
+      parentName: "vnet-hub",
+      location: "eastasia",
+      properties: { addressPrefix: "10.2.0.0/24" },
+    }));
+    const hubSubnetId = Object.values(withSubnet.resources).find((resource) => resource.name === "snet-hub")!.id;
+    const withNic = must(createResource(withSubnet, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-hub",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      properties: { subnetId: hubSubnetId, ipConfigurations: [{ name: "ipconfig1", properties: { subnet: { id: hubSubnetId } } }] },
+    }));
+    const open = checkSameVirtualNetwork(withNic, vmId, "10.2.0.4", 80);
+    assert.equal(open.value?.allowed, true, open.value?.summary);
+    assert.equal((open.trace.map((line) => line.detail ?? "").join("\n")).includes("gateway"), false);
   });
 
   it("allows a private address in the virtual network, and ignores an internet rule", () => {

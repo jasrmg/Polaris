@@ -41,6 +41,7 @@ export {
   attachPublicIp,
   peerVirtualNetworks,
   setForwardedTraffic,
+  setPeeringOptions,
   setIpForwarding,
   setPower,
   setSubscriptionState,

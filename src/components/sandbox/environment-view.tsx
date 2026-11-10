@@ -82,7 +82,9 @@ function linkLines(resource: Resource, resources: Resource[], world: World): str
       const remote = typeof remoteId === "string" ? named(resources, remoteId) : "the remote virtual network";
       const state = typeof peering.properties.peeringState === "string" ? peering.properties.peeringState : "Connected";
       const forwarded = peering.properties.allowForwardedTraffic === true ? "enabled" : "disabled";
-      lines.push(`Peering ${peering.name} to ${remote}, ${state}. Allow forwarded traffic is ${forwarded}.`);
+      const transit = peering.properties.allowGatewayTransit === true ? "enabled" : "disabled";
+      const remoteGateway = peering.properties.useRemoteGateways === true ? "enabled" : "disabled";
+      lines.push(`Peering ${peering.name} to ${remote}, ${state}. Allow forwarded traffic is ${forwarded}. Allow gateway transit is ${transit}. Use remote gateway is ${remoteGateway}.`);
     }
   }
   const rules = resource.properties.securityRules;
@@ -264,7 +266,11 @@ export function EnvironmentView() {
     const data = new FormData(event.currentTarget);
     const remoteVnetId = String(data.get("remote") ?? "");
     if (!remoteVnetId) return;
-    void run((engine, current) => engine.setForwardedTraffic(current, localVnetId, remoteVnetId, data.get("forwarded") === "true"));
+    void run((engine, current) => engine.setPeeringOptions(current, localVnetId, remoteVnetId, {
+      forwarded: data.get("forwarded") === "true",
+      allowGatewayTransit: data.get("transit") === "true",
+      useRemoteGateways: data.get("remoteGateway") === "true",
+    }));
   }
 
   function peerNetworks(localVnetId: string, event: FormEvent<HTMLFormElement>) {
@@ -614,7 +620,7 @@ export function EnvironmentView() {
                                   </select>
                                 </label>
                                 <p className="text-xs text-muted-foreground">
-                                  Creates both links and sets them to Connected. The address spaces must not overlap. Peering is not transitive. Allow forwarded traffic stays off. Gateway transit is not part of this.
+                                  Creates both links and sets them to Connected. The address spaces must not overlap. Peering is not transitive. Allow forwarded traffic, gateway transit, and use remote gateway stay off.
                                 </p>
                                 <Button type="submit" size="sm" className="w-fit">Peer</Button>
                               </form>
@@ -638,9 +644,23 @@ export function EnvironmentView() {
                                     <option value="true">Enabled</option>
                                   </select>
                                 </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Allow gateway transit
+                                  <select name="transit" className={selectClass} defaultValue="false">
+                                    <option value="false">Disabled</option>
+                                    <option value="true">Enabled</option>
+                                  </select>
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Use remote gateway
+                                  <select name="remoteGateway" className={selectClass} defaultValue="false">
+                                    <option value="false">Disabled</option>
+                                    <option value="true">Enabled</option>
+                                  </select>
+                                </label>
                               </div>
                               <p className="text-xs text-muted-foreground">
-                                Sets both links. Learn describes the direction inconsistently, so the sandbox requires both. Gateway transit is not part of this.
+                                Allow forwarded traffic is saved on both links. Allow gateway transit and Use remote gateway are saved on this link only. Use remote gateway needs Allow gateway transit on the other virtual network, and only one peering of this virtual network can use it. The sandbox has no gateway, so this does not carry traffic.
                               </p>
                               <Button type="submit" size="sm" className="w-fit">Save</Button>
                             </form>
