@@ -40,6 +40,7 @@ export {
   attachNetworkInterface,
   attachPublicIp,
   peerVirtualNetworks,
+  setForwardedTraffic,
   setIpForwarding,
   setPower,
   setSubscriptionState,

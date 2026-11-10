@@ -5,6 +5,7 @@ import {
   addInternetRoute,
   addSecurityRule,
   peerVirtualNetworks,
+  setForwardedTraffic,
   setIpForwarding,
   associateNicSecurityGroup,
   attachNetworkInterface,
@@ -653,8 +654,10 @@ describe("inbound internet check", () => {
       nextHopIpAddress: "10.0.2.4",
     }));
     const noRoute = checkSameVirtualNetwork(host, vmId, "10.0.1.4", 80);
-    assert.match(noRoute.value?.summary ?? "", /Stopped at nic-nva\. snet-nva has no user route that wins for 10\.0\.1\.4/);
-    assert.equal((noRoute.trace.map((line) => line.detail ?? "").join("\n")).includes("nic-web-01 has"), false);
+    assert.equal(noRoute.value?.allowed, true);
+    const noRouteTrace = noRoute.trace.map((line) => line.detail ?? "").join("\n");
+    assert.match(noRouteTrace, /system route delivers it/);
+    assert.match(noRouteTrace, /nic-web-01 has 10\.0\.1\.4/);
 
     const nvaDrop = must(addInternetRoute(host, nvaSubnetId, {
       tableName: "rt-nva-host",
@@ -672,8 +675,94 @@ describe("inbound internet check", () => {
       addressPrefix: "0.0.0.0/0",
     }));
     const stillLocal = checkSameVirtualNetwork(broad, vmId, "10.0.1.4", 80);
-    assert.match(stillLocal.value?.summary ?? "", /no user route that wins for 10\.0\.1\.4/);
-    assert.equal((stillLocal.trace.map((line) => line.detail ?? "").join("\n")).includes("drop-all"), false);
+    assert.equal(stillLocal.value?.allowed, true);
+    const stillTrace = stillLocal.trace.map((line) => line.detail ?? "").join("\n");
+    assert.match(stillTrace, /system route delivers it/);
+    assert.equal(stillTrace.includes("drop-all"), false);
+  });
+
+  it("delivers through an appliance when both peerings allow forwarded traffic", () => {
+    const { world, vmId, subnetId } = linkedWorld();
+    const hub = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-hub",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.2.0.0/16"] } },
+    }));
+    const hubId = Object.values(hub.resources).find((resource) => resource.name === "vnet-hub")!.id;
+    const hubSubnet = must(createResource(hub, {
+      armType: "Microsoft.Network/virtualNetworks/subnets",
+      name: "snet-hub",
+      resourceGroup: "rg-demo",
+      parentName: "vnet-hub",
+      location: "eastasia",
+      properties: { addressPrefix: "10.2.0.0/24" },
+    }));
+    const hubSubnetId = Object.values(hubSubnet.resources).find((resource) => resource.name === "snet-hub")!.id;
+    const hubNic = must(createResource(hubSubnet, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-hub",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      properties: { subnetId: hubSubnetId, ipConfigurations: [{ name: "ipconfig1", properties: { subnet: { id: hubSubnetId } } }] },
+    }));
+    const nvaId = Object.values(hubNic.resources).find((resource) => resource.name === "nic-hub")!.id;
+    const enabled = must(setIpForwarding(hubNic, nvaId, true));
+    const seaId = Object.values(world.resources).find((resource) => resource.name === "vnet-sea")!.id;
+    const peered = must(peerVirtualNetworks(enabled, seaId, hubId));
+    const routed = must(addInternetRoute(peered, subnetId, {
+      tableName: "rt-app",
+      routeName: "via-hub",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "10.0.1.4/32",
+      nextHopIpAddress: "10.2.0.4",
+    }));
+    const blocked = checkSameVirtualNetwork(routed, vmId, "10.0.1.4", 80);
+    assert.equal(blocked.value?.allowed, false);
+    assert.match(blocked.value?.summary ?? "", /Forwarded traffic is not allowed from vnet-hub to vnet-sea/);
+    assert.match(blocked.trace.map((line) => line.detail ?? "").join("\n"), /both links must allow it in the sandbox/);
+
+    const opened = must(setForwardedTraffic(routed, seaId, hubId, true));
+    const delivered = checkSameVirtualNetwork(opened, vmId, "10.0.1.4", 80);
+    assert.equal(delivered.value?.allowed, true, delivered.value?.summary);
+    assert.match(delivered.trace.map((line) => line.detail ?? "").join("\n"), /nic-web-01 has 10\.0\.1\.4/);
+
+    const localId = Object.values(opened.resources).find((resource) => resource.name === "vnet-hub-to-vnet-sea")!.id;
+    const oneSide = must(updateResource(opened, localId, { properties: { allowForwardedTraffic: false } }));
+    const closed = checkSameVirtualNetwork(oneSide, vmId, "10.0.1.4", 80);
+    assert.match(closed.value?.summary ?? "", /Forwarded traffic is not allowed/);
+
+    const nvaSubnet = must(createResource(peered, {
+      armType: "Microsoft.Network/virtualNetworks/subnets",
+      name: "snet-nva",
+      resourceGroup: "rg-demo",
+      parentName: "vnet-sea",
+      location: "southeastasia",
+      properties: { addressPrefix: "10.0.2.0/24" },
+    }));
+    const nvaSubnetId = Object.values(nvaSubnet.resources).find((resource) => resource.name === "snet-nva")!.id;
+    const nvaNic = must(createResource(nvaSubnet, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-nva",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { subnetId: nvaSubnetId, ipConfigurations: [{ name: "ipconfig1", properties: { subnet: { id: nvaSubnetId } } }] },
+    }));
+    const localNvaId = Object.values(nvaNic.resources).find((resource) => resource.name === "nic-nva")!.id;
+    const localEnabled = must(setIpForwarding(nvaNic, localNvaId, true));
+    const localAppliance = must(addInternetRoute(localEnabled, subnetId, {
+      tableName: "rt-local",
+      routeName: "via-local",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "10.2.0.4/32",
+      nextHopIpAddress: "10.0.2.4",
+    }));
+    const normal = checkSameVirtualNetwork(localAppliance, vmId, "10.2.0.4", 80);
+    assert.equal(normal.value?.allowed, true, normal.value?.summary);
+    const normalTrace = normal.trace.map((line) => line.detail ?? "").join("\n");
+    assert.match(normalTrace, /nic-hub has 10\.2\.0\.4/);
+    assert.equal(normalTrace.includes("Forwarded traffic:"), false);
   });
 
   it("allows a private address in the virtual network, and ignores an internet rule", () => {

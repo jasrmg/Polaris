@@ -81,7 +81,8 @@ function linkLines(resource: Resource, resources: Resource[], world: World): str
       const remoteId = peering.properties.remoteVirtualNetworkId;
       const remote = typeof remoteId === "string" ? named(resources, remoteId) : "the remote virtual network";
       const state = typeof peering.properties.peeringState === "string" ? peering.properties.peeringState : "Connected";
-      lines.push(`Peering ${peering.name} to ${remote}, ${state}.`);
+      const forwarded = peering.properties.allowForwardedTraffic === true ? "enabled" : "disabled";
+      lines.push(`Peering ${peering.name} to ${remote}, ${state}. Allow forwarded traffic is ${forwarded}.`);
     }
   }
   const rules = resource.properties.securityRules;
@@ -258,6 +259,14 @@ export function EnvironmentView() {
     void run((engine, current) => engine.setIpForwarding(current, nicId, enabled));
   }
 
+  function saveForwarded(localVnetId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const remoteVnetId = String(data.get("remote") ?? "");
+    if (!remoteVnetId) return;
+    void run((engine, current) => engine.setForwardedTraffic(current, localVnetId, remoteVnetId, data.get("forwarded") === "true"));
+  }
+
   function peerNetworks(localVnetId: string, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const remoteVnetId = String(new FormData(event.currentTarget).get("remote") ?? "");
@@ -398,6 +407,7 @@ export function EnvironmentView() {
                       const isSubnet = typeIs(resource, "microsoft.network/virtualnetworks/subnets");
                       const isVnet = typeIs(resource, "microsoft.network/virtualnetworks");
                       const otherVnets = resources.filter((item) => typeIs(item, "microsoft.network/virtualnetworks") && item.id !== resource.id);
+                      const peerings = resources.filter((item) => item.id.toLowerCase().startsWith(`${resource.id.toLowerCase()}/virtualnetworkpeerings/`) && typeof item.properties.remoteVirtualNetworkId === "string");
                       const isNsg = typeIs(resource, "microsoft.network/networksecuritygroups");
                       const canPower = provisioning === "Succeeded";
                       const links = linkLines(resource, resources, world);
@@ -489,7 +499,7 @@ export function EnvironmentView() {
                                   <Button type="submit" size="sm">Check</Button>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A virtual appliance route continues once, through the outbound security group on that interface and one route on its subnet. A second appliance is not followed. Peering is not transitive. DNS and power state are not part of this check.
+                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A virtual appliance route continues once, through the outbound security group on that interface and one route on its subnet. If that subnet has no winning user route, the virtual network system route can deliver the address. Traffic forwarded across a peering needs both links to allow it. A second appliance is not followed. Peering is not transitive. DNS and power state are not part of this check.
                                 </p>
                                 {checks[`${resource.id}:vnet`] && (
                                   <div className="rounded-lg border p-3 text-sm">
@@ -604,11 +614,36 @@ export function EnvironmentView() {
                                   </select>
                                 </label>
                                 <p className="text-xs text-muted-foreground">
-                                  Creates both links and sets them to Connected. The address spaces must not overlap. Peering is not transitive. Forwarded traffic and gateway transit are not part of this.
+                                  Creates both links and sets them to Connected. The address spaces must not overlap. Peering is not transitive. Allow forwarded traffic stays off. Gateway transit is not part of this.
                                 </p>
                                 <Button type="submit" size="sm" className="w-fit">Peer</Button>
                               </form>
                             )
+                          )}
+                          {isVnet && peerings.length > 0 && (
+                            <form className="mt-3 grid gap-2" onSubmit={(event) => saveForwarded(resource.id, event)}>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Remote virtual network
+                                  <select name="remote" className={selectClass} defaultValue={String(peerings[0]?.properties.remoteVirtualNetworkId ?? "")}>
+                                    {peerings.map((item) => (
+                                      <option key={item.id} value={String(item.properties.remoteVirtualNetworkId)}>{named(resources, String(item.properties.remoteVirtualNetworkId))}</option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Allow forwarded traffic
+                                  <select name="forwarded" className={selectClass} defaultValue="false">
+                                    <option value="false">Disabled</option>
+                                    <option value="true">Enabled</option>
+                                  </select>
+                                </label>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Sets both links. Learn describes the direction inconsistently, so the sandbox requires both. Gateway transit is not part of this.
+                              </p>
+                              <Button type="submit" size="sm" className="w-fit">Save</Button>
+                            </form>
                           )}
                           {isSubnet && (
                             <>

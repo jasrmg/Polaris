@@ -16,8 +16,10 @@
  * included when both links are Connected. Peering is not transitive. A virtual
  * appliance route sends traffic to that network interface. The check then uses
  * that interface's outbound security group and one route on its subnet, and
- * stops. A second appliance is not followed. DNS and power state are not part
- * of these checks.
+ * stops. If that subnet has no winning user route, the virtual network system
+ * route can deliver the address. Traffic forwarded across a peering needs both
+ * links to allow it. A second appliance is not followed. DNS and power state
+ * are not part of these checks.
  * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, 2.6, and 2.7.
  */
 
@@ -332,7 +334,7 @@ function deliverAppliance(world: World, trace: TraceLine[], sourceSubnet: Resour
   });
   const denied = applianceOutbound(world, trace, found.nic, found.subnet, hop);
   if (denied) return denied;
-  return applianceRoute(world, trace, found.nic, found.subnet, hop);
+  return applianceRoute(world, trace, found.nic, found.subnet, sourceSubnet, hop);
 }
 
 function applianceOutbound(world: World, trace: TraceLine[], nic: Resource, subnet: Resource, hop: ApplianceHop): Result<InboundCheck> | null {
@@ -359,7 +361,7 @@ function applianceOutbound(world: World, trace: TraceLine[], nic: Resource, subn
   return null;
 }
 
-function applianceRoute(world: World, trace: TraceLine[], nic: Resource, subnet: Resource, hop: ApplianceHop): Result<InboundCheck> {
+function applianceRoute(world: World, trace: TraceLine[], nic: Resource, subnet: Resource, sourceSubnet: Resource, hop: ApplianceHop): Result<InboundCheck> {
   const vnet = parentVirtualNetwork(world, subnet);
   const route = hop.scope === "internet" || !hop.address
     ? userInternetRoute(world, subnet)
@@ -368,6 +370,7 @@ function applianceRoute(world: World, trace: TraceLine[], nic: Resource, subnet:
       : null;
   const target = hop.address ?? "0.0.0.0/0";
   if (!route) {
+    if (hop.address && hop.scope === "vnet") return deliverBySystemRoute(world, trace, nic, subnet, sourceSubnet, hop.address, hop.port);
     trace.push({ step: "apply", ok: true, detail: `${subnet.name} has no user route that wins for ${target}. This check stops at ${nic.name}.` });
     return answered(trace, false, `Stopped at ${nic.name}. ${subnet.name} has no user route that wins for ${target}.`, LEARN.udr);
   }
@@ -385,6 +388,122 @@ function applianceRoute(world: World, trace: TraceLine[], nic: Resource, subnet:
   }
   trace.push({ step: "apply", ok: true, detail: "Azure routes that prefix to the internet." });
   return answered(trace, false, `Sent to the internet from ${nic.name}. ${label}.`, LEARN.udr);
+}
+
+function deliverBySystemRoute(
+  world: World,
+  trace: TraceLine[],
+  nic: Resource,
+  subnet: Resource,
+  sourceSubnet: Resource,
+  address: string,
+  port: number,
+): Result<InboundCheck> {
+  const applianceVnet = parentVirtualNetwork(world, subnet);
+  const originVnet = parentVirtualNetwork(world, sourceSubnet);
+  if (!applianceVnet) {
+    return answered(trace, false, `Stopped at ${nic.name}. ${subnet.name} has no user route that wins for ${address}.`, LEARN.udr);
+  }
+  const destinationVnet = vnetContaining(world, address);
+  const peered = destinationVnet && canonicalId(destinationVnet.id) !== canonicalId(applianceVnet.id)
+    ? destinationVnet
+    : undefined;
+  const local = !peered && destinationVnet && canonicalId(destinationVnet.id) === canonicalId(applianceVnet.id);
+  if (!local && !peered) {
+    trace.push({ step: "apply", ok: true, detail: `${subnet.name} has no user route that wins for ${address}. This check stops at ${nic.name}.` });
+    return answered(trace, false, `Stopped at ${nic.name}. ${subnet.name} has no user route that wins for ${address}.`, LEARN.udr);
+  }
+  if (peered) {
+    const forwarded = !originVnet || canonicalId(originVnet.id) !== canonicalId(applianceVnet.id);
+    const localLink = peeringLink(world, applianceVnet, peered);
+    const remoteLink = peeringLink(world, peered, applianceVnet);
+    if (peeringState(localLink) !== "Connected" || peeringState(remoteLink) !== "Connected") {
+      trace.push({ step: "apply", ok: true, detail: `${subnet.name} has no user route that wins for ${address}. This check stops at ${nic.name}.` });
+      return answered(trace, false, `Stopped at ${nic.name}. ${subnet.name} has no user route that wins for ${address}.`, LEARN.udr);
+    }
+    if (forwarded) {
+      trace.push({
+        step: "apply",
+        ok: true,
+        detail: "Forwarded traffic: Learn describes the direction inconsistently, both links must allow it in the sandbox.",
+      });
+      if (localLink?.properties.allowForwardedTraffic !== true || remoteLink?.properties.allowForwardedTraffic !== true) {
+        return answered(
+          trace,
+          false,
+          `Forwarded traffic is not allowed from ${applianceVnet.name} to ${peered.name}. Learn describes the direction inconsistently, so both links must allow it.`,
+          LEARN.peering,
+        );
+      }
+    } else if (localLink?.properties.allowVirtualNetworkAccess === false) {
+      return answered(trace, false, `${applianceVnet.name} is not allowed to access ${peered.name}. (sandbox wording)`, LEARN.peering);
+    } else {
+      trace.push({
+        step: "apply",
+        ok: true,
+        detail: `${applianceVnet.name} is peered with ${peered.name}. Allow virtual network access is checked on the appliance side. Only that side is documented.`,
+      });
+    }
+  }
+  const destinationSubnet = subnetsOf(world, peered ?? applianceVnet).find((item) => {
+    const prefix = item.properties.addressPrefix;
+    return typeof prefix === "string" && prefixContains(prefix, address);
+  });
+  if (!destinationSubnet) {
+    return answered(trace, false, `${address} is inside ${(peered ?? applianceVnet).name}, and no subnet contains it. (sandbox wording)`, LEARN.subnet);
+  }
+  trace.push({
+    step: "apply",
+    ok: true,
+    detail: `${subnet.name} has no user route that wins for ${address}. The virtual network system route delivers it.`,
+  });
+  return finishAtDestination(world, trace, destinationSubnet, address, port, null);
+}
+
+function vnetContaining(world: World, address: string): Resource | undefined {
+  return Object.values(world.resources).find((resource) =>
+    resource.type.toLowerCase() === "microsoft.network/virtualnetworks" &&
+    prefixesOf(resource).some((prefix) => prefixContains(prefix, address)),
+  );
+}
+
+function finishAtDestination(
+  world: World,
+  trace: TraceLine[],
+  destinationSubnet: Resource,
+  destination: string,
+  port: number,
+  sourceVerdict: string | null,
+): Result<InboundCheck> {
+  const destinationNic = Object.values(world.resources).find((resource) =>
+    resource.type.toLowerCase() === "microsoft.network/networkinterfaces" && assignedPrivateIp(world, resource) === destination,
+  );
+  if (!destinationNic) {
+    trace.push({ step: "apply", ok: true, detail: `No network interface has ${destination}.` });
+    return answered(trace, false, `No network interface has ${destination}. (sandbox wording)`, LEARN.nic);
+  }
+  trace.push({ step: "apply", ok: true, detail: `${destinationNic.name} has ${destination}.` });
+  const destinationNsg = attachedNsg(world, destinationSubnet);
+  if (!destinationNsg) {
+    trace.push({ step: "apply", ok: true, detail: `No network security group on ${destinationSubnet.name}. No NSG at this layer.` });
+  } else {
+    const matched = firstMatch(destinationNsg, port, "inbound", "vnet");
+    trace.push({ step: "apply", ok: true, detail: `${destinationSubnet.name} uses ${destinationNsg.name}. ${ruleLine(matched)}` });
+    if (matched.access === "Deny") {
+      trace.push({ step: "apply", ok: true, detail: "The subnet network security group denied the traffic. The network interface does not see it." });
+      return answered(trace, false, verdict(matched), LEARN.nsgOverview);
+    }
+  }
+  const destinationNicNsg = attachedNsg(world, destinationNic);
+  if (!destinationNicNsg) {
+    trace.push({ step: "apply", ok: true, detail: `No network security group on ${destinationNic.name}. No NSG at this layer.` });
+    if (!destinationNsg) return answered(trace, true, sourceVerdict ?? VNET_NOT_FILTERED, LEARN.nsgHowItWorks);
+    trace.push({ step: "apply", ok: true, detail: `${destinationNic.name} gets whatever ${destinationSubnet.name} allows.` });
+    return answered(trace, true, verdict(firstMatch(destinationNsg, port, "inbound", "vnet")), LEARN.nsgHowItWorks);
+  }
+  const matched = firstMatch(destinationNicNsg, port, "inbound", "vnet");
+  trace.push({ step: "apply", ok: true, detail: `${destinationNic.name} uses ${destinationNicNsg.name}. ${ruleLine(matched)}` });
+  return answered(trace, matched.access === "Allow", verdict(matched), LEARN.nsgOverview);
 }
 
 function extraSystemPrefixes(world: World, vnet: Resource, address: string): string[] {
@@ -580,35 +699,7 @@ export function checkSameVirtualNetwork(world: World, vmId: string, address: str
     return answered(trace, false, `Sent to the internet. routes/${selected.name}, ${selected.prefix}, next hop Internet.`, LEARN.udr);
   }
 
-  const destinationNic = Object.values(world.resources).find((resource) =>
-    resource.type.toLowerCase() === "microsoft.network/networkinterfaces" && assignedPrivateIp(world, resource) === destination,
-  );
-  if (!destinationNic) {
-    trace.push({ step: "apply", ok: true, detail: `No network interface has ${destination}.` });
-    return answered(trace, false, `No network interface has ${destination}. (sandbox wording)`, LEARN.nic);
-  }
-  trace.push({ step: "apply", ok: true, detail: `${destinationNic.name} has ${destination}.` });
-  const destinationNsg = attachedNsg(world, destinationSubnet);
-  if (!destinationNsg) {
-    trace.push({ step: "apply", ok: true, detail: `No network security group on ${destinationSubnet.name}. No NSG at this layer.` });
-  } else {
-    const matched = firstMatch(destinationNsg, port, "inbound", "vnet");
-    trace.push({ step: "apply", ok: true, detail: `${destinationSubnet.name} uses ${destinationNsg.name}. ${ruleLine(matched)}` });
-    if (matched.access === "Deny") {
-      trace.push({ step: "apply", ok: true, detail: "The subnet network security group denied the traffic. The network interface does not see it." });
-      return answered(trace, false, verdict(matched), LEARN.nsgOverview);
-    }
-  }
-  const destinationNicNsg = attachedNsg(world, destinationNic);
-  if (!destinationNicNsg) {
-    trace.push({ step: "apply", ok: true, detail: `No network security group on ${destinationNic.name}. No NSG at this layer.` });
-    if (!destinationNsg) return answered(trace, true, sourceVerdict ?? VNET_NOT_FILTERED, LEARN.nsgHowItWorks);
-    trace.push({ step: "apply", ok: true, detail: `${destinationNic.name} gets whatever ${destinationSubnet.name} allows.` });
-    return answered(trace, true, verdict(firstMatch(destinationNsg, port, "inbound", "vnet")), LEARN.nsgHowItWorks);
-  }
-  const matched = firstMatch(destinationNicNsg, port, "inbound", "vnet");
-  trace.push({ step: "apply", ok: true, detail: `${destinationNic.name} uses ${destinationNicNsg.name}. ${ruleLine(matched)}` });
-  return answered(trace, matched.access === "Allow", verdict(matched), LEARN.nsgOverview);
+  return finishAtDestination(world, trace, destinationSubnet, destination, port, sourceVerdict);
 }
 
 function openPath(world: World, vmId: string, port: number, detail: string): Path | Result<InboundCheck> {
