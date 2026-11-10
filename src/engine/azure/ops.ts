@@ -4,7 +4,7 @@
  */
 
 import { failure, success, type EngineError, type Result, type TraceLine } from "../core/result";
-import { nextPrivateIp, withPrivateIp } from "./addresses";
+import { assignedPrivateIp, nextPrivateIp, withPrivateIp } from "./addresses";
 import { formatCidr, overlapsCidr, parseCidr } from "./cidr";
 import { LIMITS } from "./constants";
 import { canonicalId, managementGroupId, parseId, resourceGroupId, resourceId, subscriptionId } from "./ids";
@@ -352,11 +352,14 @@ export function setSubscriptionState(world: World, subGuid: string, state: Subsc
     const next = cloneWorld(current);
     next.subscriptions[canonicalId(sub.id)] = { ...sub, state };
     if (state === "Disabled") {
+      const vmIds: string[] = [];
       for (const resource of Object.values(next.resources)) {
         if (resource.subscriptionId === sub.subscriptionId && resource.type.toLowerCase() === "microsoft.compute/virtualmachines") {
           resource.properties = { ...resource.properties, powerState: "Deallocated" };
+          vmIds.push(resource.id);
         }
       }
+      for (const vmId of vmIds) writeAutoRecord(next, vmId);
     }
     return { world: next };
   }, { ignoreSubscriptionState: true, action });
@@ -624,6 +627,7 @@ export function createResource(world: World, input: CreateResourceInput, options
     const label = properties.dnsSettings && typeof properties.dnsSettings === "object"
       ? (properties.dnsSettings as { domainNameLabel?: unknown }).domainNameLabel
       : undefined;
+    if (typeKey === "microsoft.compute/virtualmachines") writeAutoRecord(next, resource.id);
     if (typeKey === "microsoft.network/publicipaddresses" && typeof label === "string") {
       const clash = Object.values(current.resources).find((other) => {
         if (other.type.toLowerCase() !== typeKey || other.location.toLowerCase() !== location.toLowerCase()) return false;
@@ -701,7 +705,7 @@ export function updateResource(
 
 export function attachNetworkInterface(world: World, vmId: string, nicId: string): Result<World> {
   const existing = world.resources[canonicalId(vmId)];
-  return gate(world, "PATCH", vmId, "Microsoft.Compute/virtualMachines", (current) => {
+  const attached = gate(world, "PATCH", vmId, "Microsoft.Compute/virtualMachines", (current) => {
     const vm = current.resources[canonicalId(vmId)];
     const nic = current.resources[canonicalId(nicId)];
     if (!vm || !isType(vm, "microsoft.compute/virtualmachines")) return { error: missing("virtual machine", vmId, LEARN.armOverview) };
@@ -744,6 +748,10 @@ export function attachNetworkInterface(world: World, vmId: string, nicId: string
     };
     return { world: next };
   }, { policy: existing ? subjectFromResource(existing) : undefined });
+  if (!attached.ok || !attached.value) return attached;
+  const next = cloneWorld(attached.value);
+  writeAutoRecord(next, vmId);
+  return { ...attached, value: next };
 }
 
 export function attachPublicIp(world: World, nicId: string, publicIpId: string): Result<World> {
@@ -1293,6 +1301,257 @@ function linkedVnetId(resource: Resource): string | null {
   return typeof id === "string" ? id : null;
 }
 
+export function setPrivateDnsRegistration(
+  world: World,
+  vnetId: string,
+  input: { zoneName: string; enabled: boolean },
+): Result<World> {
+  const vnet = world.resources[canonicalId(vnetId)];
+  if (!vnet || !isType(vnet, "microsoft.network/virtualnetworks")) {
+    return failure([{ step: "parse", ok: true }], missing("virtual network", vnetId, LEARN.vnet));
+  }
+  const zoneName = input.zoneName.trim();
+  const nameError = validateName("Microsoft.Network/privateDnsZones", zoneName);
+  if (nameError) return failure([{ step: "parse", ok: true }], nameError);
+  const registered = registrationLink(world, vnet);
+  if (input.enabled && registered && !sameName(registered.zone.name, zoneName)) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "RegistrationZoneExists",
+      message: "A virtual network can link to only one zone with auto-registration. (sandbox wording)",
+      next: "Turn auto-registration off on the other zone first.",
+      step: "validate",
+      learnUrl: LEARN.privateDnsRegistration,
+    });
+  }
+  const existingZone = privateZone(world, vnet, zoneName);
+  if (!input.enabled) {
+    if (!existingZone) return success([{ step: "validate", ok: true }], world);
+    const link = privateZoneLink(world, existingZone, vnet);
+    if (!link || link.properties.registrationEnabled !== true) return success([{ step: "validate", ok: true }], world);
+  }
+  if (input.enabled && existingZone) {
+    const conflict = registrationConflict(world, existingZone, vnet);
+    if (conflict) return failure([{ step: "parse", ok: true }], conflict);
+  }
+  let current = world;
+  let trace: TraceLine[] = [{ step: "validate", ok: true }];
+  let zone = existingZone;
+  if (!zone) {
+    const created = createResource(current, {
+      armType: "Microsoft.Network/privateDnsZones",
+      name: zoneName,
+      resourceGroup: vnet.resourceGroup,
+      subscriptionId: vnet.subscriptionId,
+      location: "global",
+    });
+    if (!created.ok || !created.value) return created.ok ? failure([{ step: "parse", ok: true }], missing("private DNS zone", zoneName, LEARN.privateDns)) : created;
+    current = created.value;
+    trace = created.trace;
+    zone = privateZone(current, vnet, zoneName);
+    if (!zone) return failure([{ step: "parse", ok: true }], missing("private DNS zone", zoneName, LEARN.privateDns));
+  }
+  const link = privateZoneLink(current, zone, vnet);
+  if (!link) {
+    const linked = createResource(current, {
+      armType: "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+      name: `link-${vnet.name}`,
+      resourceGroup: vnet.resourceGroup,
+      subscriptionId: vnet.subscriptionId,
+      location: "global",
+      parentName: zone.name,
+      properties: { registrationEnabled: input.enabled, virtualNetwork: { id: vnet.id } },
+    });
+    if (!linked.ok || !linked.value) return linked.ok ? failure([{ step: "parse", ok: true }], missing("virtual network link", vnet.name, LEARN.privateDns)) : linked;
+    current = linked.value;
+    trace = linked.trace;
+    zone = privateZone(current, vnet, zoneName) ?? zone;
+  } else if (link.properties.registrationEnabled !== input.enabled) {
+    current = cloneWorld(current);
+    const target = current.resources[canonicalId(link.id)];
+    target.properties = { ...target.properties, registrationEnabled: input.enabled, provisioningState: "Succeeded" };
+    zone = privateZone(current, vnet, zoneName) ?? zone;
+  }
+  if (current === world) current = cloneWorld(current);
+  if (input.enabled) writeAutoRecordsForVnet(current, vnet);
+  else clearAutoRecords(current, zone, vnet);
+  return success(trace, current);
+}
+
+function registrationConflict(world: World, zone: Resource, vnet: Resource): EngineError | null {
+  for (const vm of vmsInVnet(world, vnet)) {
+    if (vm.properties.powerState !== "Running") continue;
+    const nameError = validateName("Microsoft.Network/privateDnsZones/A", vm.name);
+    if (nameError) return nameError;
+    const record = aRecord(world, zone, vm.name);
+    if (record && record.properties.autoRegistered !== true) {
+      return {
+        code: "RecordNameTaken",
+        message: `An A record named ${vm.name} already exists in ${zone.name}. (sandbox wording)`,
+        next: "Delete that record before auto-registration can use the virtual machine name.",
+        step: "validate",
+        learnUrl: LEARN.privateDnsRegistration,
+      };
+    }
+  }
+  return null;
+}
+
+function registrationLink(world: World, vnet: Resource): { zone: Resource; link: Resource } | undefined {
+  for (const zone of Object.values(world.resources)) {
+    if (!isType(zone, "microsoft.network/privatednszones")) continue;
+    const link = privateZoneLink(world, zone, vnet);
+    if (link?.properties.registrationEnabled === true) return { zone, link };
+  }
+  return undefined;
+}
+
+function writeAutoRecordsForVnet(world: World, vnet: Resource): void {
+  for (const vm of vmsInVnet(world, vnet)) writeAutoRecord(world, vm.id);
+}
+
+function writeAutoRecord(world: World, vmId: string): void {
+  const vm = world.resources[canonicalId(vmId)];
+  if (!vm || !isType(vm, "microsoft.compute/virtualmachines")) return;
+  const nic = primaryNic(world, vm);
+  const vnet = nic ? vnetOfNic(world, nic) : undefined;
+  if (!nic || !vnet) {
+    removeAutoRecordsForVm(world, vm.id);
+    return;
+  }
+  const home = registrationLink(world, vnet);
+  if (!home || vm.properties.powerState !== "Running") {
+    if (home) removeAutoRecord(world, home.zone, vm.id);
+    else removeAutoRecordsForVm(world, vm.id);
+    return;
+  }
+  const address = assignedPrivateIp(world, nic);
+  if (!address || validateName("Microsoft.Network/privateDnsZones/A", vm.name)) {
+    removeAutoRecord(world, home.zone, vm.id);
+    return;
+  }
+  const existing = aRecord(world, home.zone, vm.name);
+  if (existing && (existing.properties.autoRegistered !== true || canonicalId(String(existing.properties.virtualMachineId ?? "")) !== canonicalId(vm.id))) return;
+  const id = resourceId(home.zone.subscriptionId, home.zone.resourceGroup, "Microsoft.Network/privateDnsZones/A", [home.zone.name, vm.name]);
+  world.resources[canonicalId(id)] = {
+    id,
+    name: vm.name,
+    type: "Microsoft.Network/privateDnsZones/A",
+    location: "global",
+    tags: {},
+    resourceGroup: home.zone.resourceGroup,
+    subscriptionId: home.zone.subscriptionId,
+    properties: {
+      ttl: 3600,
+      aRecords: [{ ipv4Address: address }],
+      autoRegistered: true,
+      virtualMachineId: vm.id,
+      provisioningState: "Succeeded",
+    },
+  };
+}
+
+function clearAutoRecords(world: World, zone: Resource, vnet: Resource): void {
+  const ids = new Set(vmsInVnet(world, vnet).map((vm) => canonicalId(vm.id)));
+  for (const key of Object.keys(world.resources)) {
+    const record = world.resources[key];
+    if (!record || !isAutoRecord(record, zone)) continue;
+    const vmId = record.properties.virtualMachineId;
+    if (typeof vmId === "string" && ids.has(canonicalId(vmId))) delete world.resources[key];
+  }
+}
+
+function removeAutoRecord(world: World, zone: Resource, vmId: string): void {
+  for (const key of Object.keys(world.resources)) {
+    const record = world.resources[key];
+    if (!record || !isAutoRecord(record, zone)) continue;
+    const owner = record.properties.virtualMachineId;
+    if (typeof owner === "string" && canonicalId(owner) === canonicalId(vmId)) delete world.resources[key];
+  }
+}
+
+function removeAutoRecordsForVm(world: World, vmId: string): void {
+  for (const key of Object.keys(world.resources)) {
+    const record = world.resources[key];
+    if (!record || record.properties.autoRegistered !== true) continue;
+    const owner = record.properties.virtualMachineId;
+    if (typeof owner === "string" && canonicalId(owner) === canonicalId(vmId)) delete world.resources[key];
+  }
+}
+
+function removePrivateDnsForVnet(world: World, vnet: Resource): void {
+  const zoneIds = new Set<string>();
+  for (const key of Object.keys(world.resources)) {
+    const link = world.resources[key];
+    if (!link || !isType(link, "microsoft.network/privatednszones/virtualnetworklinks")) continue;
+    if (canonicalId(linkedVnetId(link) ?? "") !== canonicalId(vnet.id)) continue;
+    const zone = zoneOwning(world, link);
+    if (zone && link.properties.registrationEnabled === true) zoneIds.add(canonicalId(zone.id));
+    delete world.resources[key];
+  }
+  for (const zoneId of zoneIds) {
+    const zone = world.resources[zoneId];
+    if (zone) clearAutoRecords(world, zone, vnet);
+  }
+}
+
+function zoneOwning(world: World, link: Resource): Resource | undefined {
+  return Object.values(world.resources).find((resource) =>
+    isType(resource, "microsoft.network/privatednszones") && canonicalId(link.id).startsWith(`${canonicalId(resource.id)}/`),
+  );
+}
+
+function isAutoRecord(record: Resource, zone: Resource): boolean {
+  return record.properties.autoRegistered === true &&
+    record.type.toLowerCase() === "microsoft.network/privatednszones/a" &&
+    canonicalId(record.id).startsWith(`${canonicalId(zone.id)}/a/`);
+}
+
+function aRecord(world: World, zone: Resource, name: string): Resource | undefined {
+  const prefix = `${canonicalId(zone.id)}/a/`;
+  return Object.values(world.resources).find((resource) =>
+    resource.type.toLowerCase() === "microsoft.network/privatednszones/a" &&
+    canonicalId(resource.id).startsWith(prefix) &&
+    sameName(resource.name, name),
+  );
+}
+
+function vmsInVnet(world: World, vnet: Resource): Resource[] {
+  return Object.values(world.resources).filter((resource) => {
+    if (!isType(resource, "microsoft.compute/virtualmachines")) return false;
+    const nic = primaryNic(world, resource);
+    const home = nic ? vnetOfNic(world, nic) : undefined;
+    return home !== undefined && canonicalId(home.id) === canonicalId(vnet.id);
+  });
+}
+
+function primaryNic(world: World, vm: Resource): Resource | undefined {
+  const id = linkedIds(vm, "nicIds")[0];
+  return id ? world.resources[id] : undefined;
+}
+
+function vnetOfNic(world: World, nic: Resource): Resource | undefined {
+  const direct = typeof nic.properties.subnetId === "string" ? nic.properties.subnetId : null;
+  const configs = nic.properties.ipConfigurations;
+  let nested: string | null = null;
+  if (Array.isArray(configs)) {
+    for (const config of configs) {
+      if (!config || typeof config !== "object") continue;
+      const props = (config as { properties?: unknown }).properties;
+      if (!props || typeof props !== "object") continue;
+      const subnet = (props as { subnet?: { id?: unknown } }).subnet;
+      if (subnet && typeof subnet.id === "string") nested = subnet.id;
+    }
+  }
+  const subnetId = direct ?? nested;
+  const subnet = subnetId ? world.resources[canonicalId(subnetId)] : undefined;
+  if (!subnet) return undefined;
+  const marker = "/subnets/";
+  const id = canonicalId(subnet.id);
+  const at = id.indexOf(marker);
+  if (at < 0) return undefined;
+  return world.resources[id.slice(0, at)];
+}
+
 export function peerVirtualNetworks(world: World, localVnetId: string, remoteVnetId: string): Result<World> {
   const local = world.resources[canonicalId(localVnetId)];
   const remote = world.resources[canonicalId(remoteVnetId)];
@@ -1445,6 +1704,14 @@ export function deleteResource(world: World, id: string): Result<World> {
     if (existing.type.toLowerCase() === "microsoft.network/virtualnetworks/virtualnetworkpeerings") {
       disconnectPeer(next, existing);
     }
+    if (isType(existing, "microsoft.compute/virtualmachines")) removeAutoRecordsForVm(next, existing.id);
+    if (isType(existing, "microsoft.network/virtualnetworks")) removePrivateDnsForVnet(next, existing);
+    if (isType(existing, "microsoft.network/privatednszones/virtualnetworklinks") && existing.properties.registrationEnabled === true) {
+      const zone = zoneOwning(next, existing);
+      const linkedId = linkedVnetId(existing);
+      const linked = linkedId ? next.resources[canonicalId(linkedId)] : undefined;
+      if (zone && linked) clearAutoRecords(next, zone, linked);
+    }
     const prefix = `${canonicalId(existing.id)}/`;
     for (const key of Object.keys(next.resources)) {
       if (key === canonicalId(existing.id) || key.startsWith(prefix)) delete next.resources[key];
@@ -1487,7 +1754,7 @@ export function deleteResourceGroup(world: World, id: string): Result<World> {
 
 export function setPower(world: World, id: string, action: "start" | "stop" | "deallocate"): Result<World> {
   const verb = action === "start" ? "start" : action === "deallocate" ? "deallocate" : "powerOff";
-  return gate(world, "POST", id, "Microsoft.Compute/virtualMachines", (current) => {
+  const changed = gate(world, "POST", id, "Microsoft.Compute/virtualMachines", (current) => {
     const existing = current.resources[canonicalId(id)];
     if (!existing || existing.type.toLowerCase() !== "microsoft.compute/virtualmachines") {
       return { error: missing("Virtual machine", id, LEARN.vmStates) };
@@ -1512,6 +1779,10 @@ export function setPower(world: World, id: string, action: "start" | "stop" | "d
     };
     return { world: next };
   }, { action: `Microsoft.Compute/virtualMachines/${verb}/action` });
+  if (!changed.ok || !changed.value) return changed;
+  const next = cloneWorld(changed.value);
+  writeAutoRecord(next, id);
+  return { ...changed, value: next };
 }
 
 export function registerProvider(world: World, namespace: string, subscriptionIdValue?: string): Result<World> {

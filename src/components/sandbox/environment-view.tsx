@@ -46,6 +46,22 @@ function chosen(resources: Resource[], current: string | null): string {
   return resources[0]?.id ?? "";
 }
 
+function registrationZone(resources: Resource[], vnet: Resource): string | null {
+  for (const zone of resources) {
+    if (!typeIs(zone, "microsoft.network/privatednszones")) continue;
+    const prefix = `${zone.id.toLowerCase()}/virtualnetworklinks/`;
+    const on = resources.some((item) => {
+      if (!item.id.toLowerCase().startsWith(prefix) || item.properties.registrationEnabled !== true) return false;
+      const network = item.properties.virtualNetwork;
+      if (!network || typeof network !== "object") return false;
+      const id = (network as { id?: unknown }).id;
+      return typeof id === "string" && id.toLowerCase() === vnet.id.toLowerCase();
+    });
+    if (on) return zone.name;
+  }
+  return null;
+}
+
 function linkLines(resource: Resource, resources: Resource[], world: World): string[] {
   const lines: string[] = [];
   if (typeIs(resource, "microsoft.network/networkinterfaces")) {
@@ -97,14 +113,22 @@ function linkLines(resource: Resource, resources: Resource[], world: World): str
         return typeof id === "string" && id.toLowerCase() === resource.id.toLowerCase();
       });
       if (!linked) continue;
+      const registration = resources.some((item) => {
+        if (!item.id.toLowerCase().startsWith(linkPrefix) || item.properties.registrationEnabled !== true) return false;
+        const network = item.properties.virtualNetwork;
+        if (!network || typeof network !== "object") return false;
+        const id = (network as { id?: unknown }).id;
+        return typeof id === "string" && id.toLowerCase() === resource.id.toLowerCase();
+      });
+      const registrationLabel = registration ? "on" : "off";
       const recordPrefix = `${zone.id.toLowerCase()}/a/`;
       const records = resources.filter((item) => typeIs(item, "microsoft.network/privatednszones/a") && item.id.toLowerCase().startsWith(recordPrefix));
-      if (records.length === 0) lines.push(`Private DNS zone ${zone.name} is linked. Auto-registration is off.`);
+      if (records.length === 0) lines.push(`Private DNS zone ${zone.name} is linked. Auto-registration is ${registrationLabel}.`);
       for (const record of records) {
         const rows = record.properties.aRecords;
         const first = Array.isArray(rows) ? rows[0] : null;
         const address = first && typeof first === "object" ? (first as { ipv4Address?: unknown }).ipv4Address : null;
-        if (typeof address === "string") lines.push(`Private DNS ${record.name}.${zone.name} is ${address}. Auto-registration is off.`);
+        if (typeof address === "string") lines.push(`Private DNS ${record.name}.${zone.name} is ${address}. Auto-registration is ${registrationLabel}.`);
       }
     }
   }
@@ -291,6 +315,15 @@ export function EnvironmentView() {
       forwarded: data.get("forwarded") === "true",
       allowGatewayTransit: data.get("transit") === "true",
       useRemoteGateways: data.get("remoteGateway") === "true",
+    }));
+  }
+
+  function saveRegistration(vnetId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    void run((engine, current) => engine.setPrivateDnsRegistration(current, vnetId, {
+      zoneName: String(data.get("zoneName") ?? ""),
+      enabled: data.get("registration") === "true",
     }));
   }
 
@@ -536,7 +569,7 @@ export function EnvironmentView() {
                                   <Button type="submit" size="sm">Check</Button>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A virtual appliance route continues once, through the outbound security group on that interface and one route on its subnet. If that subnet has no winning user route, the virtual network system route can deliver the address. Traffic forwarded across a peering needs both links to allow it. A second appliance is not followed. Peering is not transitive. A name such as vm-web-01 resolves through Azure-provided DNS while that virtual machine is running in this virtual network. A name from another virtual network does not resolve. A private DNS zone linked to this virtual network is checked first. A record there answers the name. If that zone has no record, the name does not resolve. A zone that is not linked is ignored. Auto-registration is not part of this check. Power state is not part of a check that already has an address.
+                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A virtual appliance route continues once, through the outbound security group on that interface and one route on its subnet. If that subnet has no winning user route, the virtual network system route can deliver the address. Traffic forwarded across a peering needs both links to allow it. A second appliance is not followed. Peering is not transitive. A name such as vm-web-01 resolves through Azure-provided DNS while that virtual machine is running in this virtual network. A name from another virtual network does not resolve. A private DNS zone linked to this virtual network is checked first. A record there answers the name. If that zone has no record, the name does not resolve. A zone that is not linked is ignored. Auto-registration adds that record for a running virtual machine and removes it when the virtual machine is stopped. Power state is not part of a check that already has an address.
                                 </p>
                                 {checks[`${resource.id}:vnet`] && (
                                   <div className="rounded-lg border p-3 text-sm">
@@ -637,6 +670,27 @@ export function EnvironmentView() {
                                 One TCP rule. Virtual network uses source and destination VirtualNetwork. Internet inbound is from Internet. Internet outbound is to Internet. Any source port. The same priority can be used once in each direction. This does not change which subnet or network interface uses the group.
                               </p>
                               <Button type="submit" size="sm" className="w-fit">Add rule</Button>
+                            </form>
+                          )}
+                          {isVnet && (
+                            <form className="mt-3 grid gap-2" onSubmit={(event) => saveRegistration(resource.id, event)}>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Zone name
+                                  <Input name="zoneName" defaultValue={registrationZone(resources, resource) ?? "contoso.internal"} autoComplete="off" />
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Auto-registration
+                                  <select name="registration" className={selectClass} defaultValue={registrationZone(resources, resource) ? "true" : "false"}>
+                                    <option value="false">Disabled</option>
+                                    <option value="true">Enabled</option>
+                                  </select>
+                                </label>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Writes an A record for each running virtual machine in this virtual network, using the first network interface. The record is removed when the virtual machine is stopped or deleted. This virtual network can register in one zone. A record you added yourself is left as it is. Reverse records are not created.
+                              </p>
+                              <Button type="submit" size="sm" className="w-fit">Save</Button>
                             </form>
                           )}
                           {isVnet && (

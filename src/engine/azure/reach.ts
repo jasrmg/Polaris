@@ -22,8 +22,9 @@
  * linked to this virtual network is checked before Azure-provided DNS. A record
  * there answers the name. No record in that zone ends the check. Azure-provided
  * DNS still resolves a running virtual machine's name when no linked zone matches.
- * Auto-registration and custom DNS are not part of these checks. An address does
- * not consult power state.
+ * Auto-registration writes an A record for a running virtual machine and removes
+ * it when that virtual machine is stopped or deleted. Custom DNS is not part of
+ * these checks. An address does not consult power state.
  * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, 2.6, and 2.7.
  */
 

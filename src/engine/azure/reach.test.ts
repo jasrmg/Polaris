@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   addInboundRule,
   addPrivateDnsRecord,
+  setPrivateDnsRegistration,
   addInternetRoute,
   addSecurityRule,
   peerVirtualNetworks,
@@ -958,6 +959,60 @@ describe("inbound internet check", () => {
     const elsewhere = must(addPrivateDnsRecord(hub, hubId, { zoneName: "contoso.internal", recordName: "web", ipv4Address: "10.0.1.4" }));
     const hidden = checkSameVirtualNetwork(elsewhere, vmId, "web.contoso.internal", 443);
     assert.equal(hidden.error?.code, "NameNotFound");
+  });
+
+  it("registers a running virtual machine and removes the record when it stops", () => {
+    const { world, vmId } = linkedWorld();
+    const seaId = Object.values(world.resources).find((resource) => resource.name === "vnet-sea")!.id;
+    const taken = must(addPrivateDnsRecord(world, seaId, { zoneName: "contoso.internal", recordName: "vm-web-01", ipv4Address: "10.0.1.4" }));
+    const before = JSON.stringify(taken);
+    const refused = setPrivateDnsRegistration(taken, seaId, { zoneName: "contoso.internal", enabled: true });
+    assert.equal(refused.error?.code, "RecordNameTaken");
+    assert.equal(JSON.stringify(taken), before);
+
+    const registered = must(setPrivateDnsRegistration(world, seaId, { zoneName: "contoso.internal", enabled: true }));
+    const hit = checkSameVirtualNetwork(registered, vmId, "vm-web-01.contoso.internal", 443);
+    assert.equal(hit.value?.allowed, true, hit.error?.message);
+    assert.match(hit.trace.map((line) => line.detail ?? "").join("\n"), /Private DNS zone contoso\.internal/);
+    const manual = must(addPrivateDnsRecord(registered, seaId, { zoneName: "contoso.internal", recordName: "web", ipv4Address: "10.0.1.4" }));
+    const web = checkSameVirtualNetwork(manual, vmId, "web.contoso.internal", 443);
+    assert.equal(web.value?.allowed, true, web.error?.message);
+
+    const snapshot = JSON.stringify(manual);
+    const second = setPrivateDnsRegistration(manual, seaId, { zoneName: "fabrikam.internal", enabled: true });
+    assert.equal(second.error?.code, "RegistrationZoneExists");
+    assert.equal(JSON.stringify(manual), snapshot);
+
+    const stopped = must(setPower(manual, vmId, "stop"));
+    const down = checkSameVirtualNetwork(stopped, vmId, "vm-web-01.contoso.internal", 443);
+    assert.equal(down.error?.code, "PrivateZoneNxDomain");
+    const started = must(setPower(stopped, vmId, "start"));
+    const back = checkSameVirtualNetwork(started, vmId, "vm-web-01.contoso.internal", 443);
+    assert.equal(back.value?.allowed, true, back.error?.message);
+
+    const off = must(setPrivateDnsRegistration(started, seaId, { zoneName: "contoso.internal", enabled: false }));
+    const removed = checkSameVirtualNetwork(off, vmId, "vm-web-01.contoso.internal", 443);
+    assert.equal(removed.error?.code, "PrivateZoneNxDomain");
+    const kept = checkSameVirtualNetwork(off, vmId, "web.contoso.internal", 443);
+    assert.equal(kept.value?.allowed, true, kept.error?.message);
+
+    const again = must(setPrivateDnsRegistration(off, seaId, { zoneName: "contoso.internal", enabled: true }));
+    const deleted = must(deleteResource(again, vmId));
+    const leftover = Object.values(deleted.resources).find((resource) => resource.name === "vm-web-01" && resource.type.toLowerCase().endsWith("/a"));
+    assert.equal(leftover, undefined);
+
+    const empty = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-empty",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.8.0.0/16"] } },
+    }));
+    const emptyId = Object.values(empty.resources).find((resource) => resource.name === "vnet-empty")!.id;
+    const linked = must(setPrivateDnsRegistration(empty, emptyId, { zoneName: "empty.internal", enabled: true }));
+    const gone = must(deleteResource(linked, emptyId));
+    const linkLeft = Object.values(gone.resources).some((resource) => resource.type.toLowerCase().endsWith("/virtualnetworklinks") && resource.name === "link-vnet-empty");
+    assert.equal(linkLeft, false);
   });
 
   it("denies virtual network traffic at the first group that matches", () => {
