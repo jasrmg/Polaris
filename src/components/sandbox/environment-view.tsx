@@ -71,6 +71,16 @@ function linkLines(resource: Resource, resources: Resource[], world: World): str
       if (typeof prefix === "string" && typeof nextHop === "string") lines.push(`Route ${name}, ${prefix}, next hop ${nextHop}.`);
     }
   }
+  if (typeIs(resource, "microsoft.network/virtualnetworks")) {
+    const prefix = `${resource.id.toLowerCase()}/virtualnetworkpeerings/`;
+    for (const peering of resources) {
+      if (!peering.id.toLowerCase().startsWith(prefix)) continue;
+      const remoteId = peering.properties.remoteVirtualNetworkId;
+      const remote = typeof remoteId === "string" ? named(resources, remoteId) : "the remote virtual network";
+      const state = typeof peering.properties.peeringState === "string" ? peering.properties.peeringState : "Connected";
+      lines.push(`Peering ${peering.name} to ${remote}, ${state}.`);
+    }
+  }
   const rules = resource.properties.securityRules;
   if (!Array.isArray(rules)) return lines;
   for (const rule of rules) {
@@ -239,6 +249,13 @@ export function EnvironmentView() {
     }));
   }
 
+  function peerNetworks(localVnetId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const remoteVnetId = String(new FormData(event.currentTarget).get("remote") ?? "");
+    if (!remoteVnetId) return;
+    void run((engine, current) => engine.peerVirtualNetworks(current, localVnetId, remoteVnetId));
+  }
+
   function addSubnetRoute(subnetId: string, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -368,6 +385,8 @@ export function EnvironmentView() {
                       const isVm = typeIs(resource, "microsoft.compute/virtualmachines");
                       const isNic = typeIs(resource, "microsoft.network/networkinterfaces");
                       const isSubnet = typeIs(resource, "microsoft.network/virtualnetworks/subnets");
+                      const isVnet = typeIs(resource, "microsoft.network/virtualnetworks");
+                      const otherVnets = resources.filter((item) => typeIs(item, "microsoft.network/virtualnetworks") && item.id !== resource.id);
                       const isNsg = typeIs(resource, "microsoft.network/networksecuritygroups");
                       const canPower = provisioning === "Succeeded";
                       const links = linkLines(resource, resources, world);
@@ -459,7 +478,7 @@ export function EnvironmentView() {
                                   <Button type="submit" size="sm">Check</Button>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  A new TCP connection to an address inside this virtual network. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A 0.0.0.0/0 route does not decide an address inside the virtual network. Peering, DNS, and power state are not part of this check.
+                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. Peering is not transitive. DNS and power state are not part of this check.
                                 </p>
                                 {checks[`${resource.id}:vnet`] && (
                                   <div className="rounded-lg border p-3 text-sm">
@@ -548,6 +567,24 @@ export function EnvironmentView() {
                               </p>
                               <Button type="submit" size="sm" className="w-fit">Add rule</Button>
                             </form>
+                          )}
+                          {isVnet && (
+                            otherVnets.length === 0 ? (
+                              <p className="mt-3 text-sm text-muted-foreground">Create another virtual network to peer with this one.</p>
+                            ) : (
+                              <form className="mt-3 grid gap-2" onSubmit={(event) => peerNetworks(resource.id, event)}>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Remote virtual network
+                                  <select name="remote" className={selectClass} defaultValue={otherVnets[0]?.id}>
+                                    {otherVnets.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.location}</option>)}
+                                  </select>
+                                </label>
+                                <p className="text-xs text-muted-foreground">
+                                  Creates both links and sets them to Connected. The address spaces must not overlap. Peering is not transitive. Forwarded traffic and gateway transit are not part of this.
+                                </p>
+                                <Button type="submit" size="sm" className="w-fit">Peer</Button>
+                              </form>
+                            )
                           )}
                           {isSubnet && (
                             <>

@@ -12,8 +12,9 @@
  * result. The same-network check uses the longest matching route after the
  * security groups allow the traffic. The virtual network system route is longer
  * than 0.0.0.0/0, so that route does not decide an address inside the network.
- * A longer user route can. Peering, DNS, appliances, and power state are not
- * part of these checks.
+ * A longer user route can. An address in a directly peered virtual network is
+ * included when both links are Connected. Peering is not transitive. DNS,
+ * appliances, and power state are not part of these checks.
  * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, 2.6, and 2.7.
  */
 
@@ -226,6 +227,7 @@ function winningUserRoute(
   subnet: Resource,
   vnet: Resource,
   address: string,
+  systemPrefixes: string[] = [],
 ): { name: string; prefix: string; nextHop: "None" | "Internet"; tableName: string } | null {
   let bestLength = -1;
   let winner: { name: string; prefix: string; nextHop: "None" | "Internet"; tableName: string } | null = null;
@@ -235,7 +237,7 @@ function winningUserRoute(
       winner = route;
     }
   };
-  for (const prefix of prefixesOf(vnet)) {
+  for (const prefix of [...prefixesOf(vnet), ...systemPrefixes]) {
     if (!prefixContains(prefix, address)) continue;
     const parsed = parseCidr(prefix);
     if (!("error" in parsed)) consider(parsed.prefix, null);
@@ -306,26 +308,66 @@ export function checkSameVirtualNetwork(world: World, vmId: string, address: str
     return answered(trace, false, `${subnet.name} is not in a virtual network. (sandbox wording)`, LEARN.vnet);
   }
   const vnetPrefixes = prefixesOf(vnet);
+  let destinationVnet = vnet;
+  let peeredPrefixes: string[] = [];
   if (!vnetPrefixes.some((prefix) => prefixContains(prefix, destination))) {
-    return failure(trace, {
-      code: "AddressOutsideVnet",
-      message: `${destination} is outside ${vnet.name}. (sandbox wording)`,
-      step: "validate",
-      learnUrl: LEARN.vnet,
-      next: "Enter an address inside this virtual network.",
+    const other = Object.values(world.resources).find((resource) =>
+      resource.type.toLowerCase() === "microsoft.network/virtualnetworks" &&
+      canonicalId(resource.id) !== canonicalId(vnet.id) &&
+      prefixesOf(resource).some((prefix) => prefixContains(prefix, destination)),
+    );
+    if (!other) {
+      return failure(trace, {
+        code: "AddressOutsideVnet",
+        message: `${destination} is outside ${vnet.name}. (sandbox wording)`,
+        step: "validate",
+        learnUrl: LEARN.vnet,
+        next: "Enter an address inside this virtual network.",
+      });
+    }
+    const localLink = peeringLink(world, vnet, other);
+    const remoteLink = peeringLink(world, other, vnet);
+    const localState = peeringState(localLink);
+    const remoteState = peeringState(remoteLink);
+    if (localState !== "Connected" || remoteState !== "Connected") {
+      return failure(trace, {
+        code: "PeeringNotConnected",
+        message: "The peering isn't successfully established until the peering status for both virtual network peerings is Connected.",
+        step: "validate",
+        learnUrl: LEARN.peering,
+        next: !localLink || !remoteLink
+          ? "Peer the two virtual networks. This page creates both links."
+          : "Delete the remaining link and create both again. This page cannot remove a link.",
+      });
+    }
+    if (localLink?.properties.allowVirtualNetworkAccess === false) {
+      return failure(trace, {
+        code: "VnetAccessDisabled",
+        message: `${vnet.name} is not allowed to access ${other.name}. (sandbox wording)`,
+        next: "This page creates the peering with access allowed.",
+        step: "validate",
+        learnUrl: LEARN.peering,
+      });
+    }
+    destinationVnet = other;
+    peeredPrefixes = prefixesOf(other);
+    trace.push({
+      step: "apply",
+      ok: true,
+      detail: `${vnet.name} is peered with ${other.name}. Both links are Connected. Allow virtual network access is checked on the source link. Only that side is documented.`,
     });
   }
-  const destinationSubnet = subnetsOf(world, vnet).find((item) => {
+  const destinationSubnet = subnetsOf(world, destinationVnet).find((item) => {
     const prefix = item.properties.addressPrefix;
     return typeof prefix === "string" && prefixContains(prefix, destination);
   });
   if (!destinationSubnet) {
-    const prefixes = subnetsOf(world, vnet)
+    const prefixes = subnetsOf(world, destinationVnet)
       .map((item) => item.properties.addressPrefix)
       .filter((prefix): prefix is string => typeof prefix === "string");
     return failure(trace, {
       code: "AddressOutsideSubnet",
-      message: `${destination} is inside ${vnet.name}, and no subnet contains it. (sandbox wording)`,
+      message: `${destination} is inside ${destinationVnet.name}, and no subnet contains it. (sandbox wording)`,
       step: "validate",
       learnUrl: LEARN.subnet,
       next: prefixes.length > 0 ? `Enter an address inside ${prefixes.join(" or ")}.` : "Add a subnet that contains this address.",
@@ -368,7 +410,7 @@ export function checkSameVirtualNetwork(world: World, vmId: string, address: str
     }
   }
 
-  const selected = winningUserRoute(world, subnet, vnet, destination);
+  const selected = winningUserRoute(world, subnet, vnet, destination, peeredPrefixes);
   if (selected) {
     trace.push({
       step: "apply",
@@ -522,6 +564,21 @@ function prefixContains(prefix: string, address: string): boolean {
   const inner = parseCidr(`${address}/32`);
   if ("error" in outer || "error" in inner) return false;
   return containsCidr(outer, inner);
+}
+
+function peeringLink(world: World, from: Resource, to: Resource): Resource | undefined {
+  const prefix = `${canonicalId(from.id)}/virtualnetworkpeerings/`;
+  return Object.values(world.resources).find((resource) =>
+    resource.type.toLowerCase() === "microsoft.network/virtualnetworks/virtualnetworkpeerings" &&
+    canonicalId(resource.id).startsWith(prefix) &&
+    typeof resource.properties.remoteVirtualNetworkId === "string" &&
+    canonicalId(resource.properties.remoteVirtualNetworkId) === canonicalId(to.id),
+  );
+}
+
+function peeringState(link: Resource | undefined): string {
+  const state = link?.properties.peeringState;
+  return typeof state === "string" ? state : link ? "Connected" : "";
 }
 
 function prefixesOf(vnet: Resource): string[] {

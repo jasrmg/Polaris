@@ -4,6 +4,7 @@ import {
   addInboundRule,
   addInternetRoute,
   addSecurityRule,
+  peerVirtualNetworks,
   associateNicSecurityGroup,
   attachNetworkInterface,
   attachPublicIp,
@@ -354,6 +355,84 @@ describe("inbound internet check", () => {
     assert.match(hostBits.error?.next ?? "", /10\.0\.1\.0\/24/);
     const nested = addInternetRoute(longer, subnetId, { tableName: "rt-app", routeName: "drop-host", nextHop: "None", addressPrefix: "10.0.1.4/32" });
     assert.equal(nested.ok, true, nested.error?.message);
+  });
+
+  it("reaches a private address in a directly peered virtual network", () => {
+    const { world, vmId, subnetId } = linkedWorld();
+    const hub = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-hub",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.2.0.0/16"] } },
+    }));
+    const hubId = Object.values(hub.resources).find((resource) => resource.name === "vnet-hub")!.id;
+    const withSubnet = must(createResource(hub, {
+      armType: "Microsoft.Network/virtualNetworks/subnets",
+      name: "snet-hub",
+      resourceGroup: "rg-demo",
+      parentName: "vnet-hub",
+      location: "eastasia",
+      properties: { addressPrefix: "10.2.0.0/24" },
+    }));
+    const hubSubnetId = Object.values(withSubnet.resources).find((resource) => resource.name === "snet-hub")!.id;
+    const withNic = must(createResource(withSubnet, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-hub",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      properties: { subnetId: hubSubnetId, ipConfigurations: [{ name: "ipconfig1", properties: { subnet: { id: hubSubnetId } } }] },
+    }));
+    const seaId = Object.values(world.resources).find((resource) => resource.name === "vnet-sea")!.id;
+    const before = checkSameVirtualNetwork(withNic, vmId, "10.2.0.4", 443);
+    assert.equal(before.error?.code, "PeeringNotConnected");
+    const peered = must(peerVirtualNetworks(withNic, seaId, hubId));
+    const open = checkSameVirtualNetwork(peered, vmId, "10.2.0.4", 443);
+    assert.equal(open.ok, true, open.error?.message);
+    assert.equal(open.value?.allowed, true);
+    assert.match(open.trace.map((line) => line.detail ?? "").join("\n"), /Both links are Connected/);
+    assert.match(open.trace.map((line) => line.detail ?? "").join("\n"), /nic-hub has 10\.2\.0\.4/);
+
+    const blocked = must(addInternetRoute(peered, subnetId, { tableName: "rt-app", routeName: "to-internet", nextHop: "None", addressPrefix: "0.0.0.0/0" }));
+    const stillOpen = checkSameVirtualNetwork(blocked, vmId, "10.2.0.4", 443);
+    assert.equal(stillOpen.value?.allowed, true);
+    const internet = checkOutboundInternet(blocked, vmId, 443);
+    assert.match(internet.value?.summary ?? "", /routes\/to-internet, 0\.0\.0\.0\/0, next hop None/);
+
+    const spoke = must(createResource(peered, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-spoke",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.3.0.0/16"] } },
+    }));
+    const spokeId = Object.values(spoke.resources).find((resource) => resource.name === "vnet-spoke")!.id;
+    const hubToSpoke = must(peerVirtualNetworks(spoke, hubId, spokeId));
+    const indirect = checkSameVirtualNetwork(hubToSpoke, vmId, "10.3.0.4", 443);
+    assert.equal(indirect.error?.code, "PeeringNotConnected");
+
+    const overlap = peerVirtualNetworks(world, seaId, seaId);
+    assert.equal(overlap.error?.code, "PeeringSameNetwork");
+    const sameSpace = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-copy",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.0.0.0/16"] } },
+    }));
+    const copyId = Object.values(sameSpace.resources).find((resource) => resource.name === "vnet-copy")!.id;
+    const refused = peerVirtualNetworks(sameSpace, seaId, copyId);
+    assert.equal(refused.error?.code, "AddressSpaceOverlap");
+    assert.match(refused.error?.message ?? "", /address spaces overlap/);
+
+    const localId = Object.values(peered.resources).find((resource) => resource.name === "vnet-sea-to-vnet-hub")!.id;
+    const cleared = must(updateResource(peered, localId, { properties: { allowVirtualNetworkAccess: false } }));
+    const denied = checkSameVirtualNetwork(cleared, vmId, "10.2.0.4", 443);
+    assert.equal(denied.error?.code, "VnetAccessDisabled");
+    const removed = must(deleteResource(peered, localId));
+    const disconnected = checkSameVirtualNetwork(removed, vmId, "10.2.0.4", 443);
+    assert.equal(disconnected.error?.code, "PeeringNotConnected");
+    assert.match(disconnected.error?.message ?? "", /both virtual network peerings is Connected/);
   });
 
   it("allows a private address in the virtual network, and ignores an internet rule", () => {

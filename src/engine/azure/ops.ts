@@ -5,7 +5,7 @@
 
 import { failure, success, type EngineError, type Result, type TraceLine } from "../core/result";
 import { nextPrivateIp, withPrivateIp } from "./addresses";
-import { formatCidr, parseCidr } from "./cidr";
+import { formatCidr, overlapsCidr, parseCidr } from "./cidr";
 import { LIMITS } from "./constants";
 import { canonicalId, managementGroupId, parseId, resourceGroupId, resourceId, subscriptionId } from "./ids";
 import { LEARN } from "./learn";
@@ -1067,6 +1067,87 @@ export function addInternetRoute(
     };
     return { world: replaceResourcePolicyStates(next, currentTable.id, tablePolicy.states) };
   }, { policy: subjectFromResource(subnet) });
+}
+
+export function peerVirtualNetworks(world: World, localVnetId: string, remoteVnetId: string): Result<World> {
+  const local = world.resources[canonicalId(localVnetId)];
+  const remote = world.resources[canonicalId(remoteVnetId)];
+  if (!local || !isType(local, "microsoft.network/virtualnetworks")) {
+    return failure([{ step: "parse", ok: true }], missing("virtual network", localVnetId, LEARN.vnet));
+  }
+  if (!remote || !isType(remote, "microsoft.network/virtualnetworks")) {
+    return failure([{ step: "parse", ok: true }], missing("virtual network", remoteVnetId, LEARN.vnet));
+  }
+  if (canonicalId(local.id) === canonicalId(remote.id)) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "PeeringSameNetwork",
+      message: "Choose another virtual network. (sandbox wording)",
+      next: "Peering joins two virtual networks.",
+      step: "validate",
+      learnUrl: LEARN.peering,
+    });
+  }
+  if (addressSpacesOverlap(addressList(local.properties), addressList(remote.properties))) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "AddressSpaceOverlap",
+      message: "You can't enable virtual network peering if address spaces overlap.",
+      next: "Use address spaces that do not overlap, such as 10.0.0.0/16 and 10.2.0.0/16.",
+      step: "validate",
+      learnUrl: LEARN.peering,
+    });
+  }
+  if (hasPeering(world, local, remote) || hasPeering(world, remote, local)) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "PeeringExists",
+      message: "These virtual networks already have a peering. (sandbox wording)",
+      next: "Keep the existing peering, or delete it and create both links again.",
+      step: "validate",
+      learnUrl: LEARN.peering,
+    });
+  }
+  const link = (
+    current: World,
+    from: Resource,
+    to: Resource,
+  ) => createResource(current, {
+    armType: "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+    name: `${from.name}-to-${to.name}`,
+    resourceGroup: from.resourceGroup,
+    subscriptionId: from.subscriptionId,
+    location: from.location,
+    parentName: from.name,
+    properties: {
+      remoteVirtualNetworkId: to.id,
+      allowVirtualNetworkAccess: true,
+      allowForwardedTraffic: false,
+      peeringState: "Connected",
+    },
+  });
+  const first = link(world, local, remote);
+  if (!first.ok || !first.value) return first.ok ? failure([{ step: "parse", ok: true }], missing("virtual network", local.id, LEARN.vnet)) : first;
+  return link(first.value, remote, local);
+}
+
+function addressSpacesOverlap(left: string[], right: string[]): boolean {
+  for (const a of left) {
+    const parsedA = parseCidr(a);
+    if ("error" in parsedA) continue;
+    for (const b of right) {
+      const parsedB = parseCidr(b);
+      if (!("error" in parsedB) && overlapsCidr(parsedA, parsedB)) return true;
+    }
+  }
+  return false;
+}
+
+function hasPeering(world: World, from: Resource, to: Resource): boolean {
+  const prefix = `${canonicalId(from.id)}/virtualnetworkpeerings/`;
+  return Object.values(world.resources).some((resource) =>
+    isType(resource, "microsoft.network/virtualnetworks/virtualnetworkpeerings") &&
+    canonicalId(resource.id).startsWith(prefix) &&
+    typeof resource.properties.remoteVirtualNetworkId === "string" &&
+    canonicalId(resource.properties.remoteVirtualNetworkId) === canonicalId(to.id),
+  );
 }
 
 export function associateNicSecurityGroup(world: World, nicId: string, nsgId: string): Result<World> {

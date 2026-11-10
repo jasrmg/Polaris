@@ -39,6 +39,7 @@ export {
   associateNicSecurityGroup,
   attachNetworkInterface,
   attachPublicIp,
+  peerVirtualNetworks,
   setPower,
   setSubscriptionState,
   unregisterProvider,
