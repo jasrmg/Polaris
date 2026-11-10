@@ -18,7 +18,8 @@
  * that interface's outbound security group and one route on its subnet, and
  * stops. If that subnet has no winning user route, the virtual network system
  * route can deliver the address. Traffic forwarded across a peering needs both
- * links to allow it. A second appliance is not followed. A private DNS zone
+ * links to allow it. Another virtual appliance is followed, up to 8 hops. A
+ * repeated subnet for the same destination is a routing loop. A private DNS zone
  * linked to this virtual network is checked before Azure-provided DNS. A record
  * there answers the name. No record in that zone ends the check. Azure-provided
  * DNS still resolves a running virtual machine's name when no linked zone matches.
@@ -300,9 +301,18 @@ interface ApplianceHop {
   port: number;
   scope: Scope;
   address?: string;
+  hops?: number;
+  seen?: string[];
+  originSubnetId?: string;
 }
 
 function deliverAppliance(world: World, trace: TraceLine[], sourceSubnet: Resource, route: ChosenRoute, hop: ApplianceHop): Result<InboundCheck> {
+  const state: ApplianceHop = {
+    ...hop,
+    hops: hop.hops ?? 1,
+    seen: hop.seen ?? [],
+    originSubnetId: hop.originSubnetId ?? sourceSubnet.id,
+  };
   const ip = route.nextHopIp ?? "";
   const label = `routes/${route.name}, ${route.prefix}, next hop VirtualAppliance ${ip}`;
   trace.push({
@@ -337,9 +347,9 @@ function deliverAppliance(world: World, trace: TraceLine[], sourceSubnet: Resour
     ok: true,
     detail: `${found.nic.name} has IP forwarding enabled. The guest operating system is not part of this check.`,
   });
-  const denied = applianceOutbound(world, trace, found.nic, found.subnet, hop);
+  const denied = applianceOutbound(world, trace, found.nic, found.subnet, state);
   if (denied) return denied;
-  return applianceRoute(world, trace, found.nic, found.subnet, sourceSubnet, hop);
+  return applianceRoute(world, trace, found.nic, found.subnet, sourceSubnet, state);
 }
 
 function applianceOutbound(world: World, trace: TraceLine[], nic: Resource, subnet: Resource, hop: ApplianceHop): Result<InboundCheck> | null {
@@ -375,21 +385,37 @@ function applianceRoute(world: World, trace: TraceLine[], nic: Resource, subnet:
       : null;
   const target = hop.address ?? "0.0.0.0/0";
   if (!route) {
-    if (hop.address && hop.scope === "vnet") return deliverBySystemRoute(world, trace, nic, subnet, sourceSubnet, hop.address, hop.port);
+    const origin = hop.originSubnetId ? world.resources[canonicalId(hop.originSubnetId)] ?? sourceSubnet : sourceSubnet;
+    if (hop.address && hop.scope === "vnet") return deliverBySystemRoute(world, trace, nic, subnet, origin, hop.address, hop.port);
     trace.push({ step: "apply", ok: true, detail: `${subnet.name} has no user route that wins for ${target}. This check stops at ${nic.name}.` });
     return answered(trace, false, `Stopped at ${nic.name}. ${subnet.name} has no user route that wins for ${target}.`, LEARN.udr);
   }
   const label = route.nextHop === "VirtualAppliance"
     ? `routes/${route.name}, ${route.prefix}, next hop VirtualAppliance ${route.nextHopIp}`
     : `routes/${route.name}, ${route.prefix}, next hop ${route.nextHop}`;
+  if (route.nextHop === "VirtualAppliance") {
+    const key = `${canonicalId(subnet.id)}|${target}`;
+    const seen = hop.seen ?? [];
+    if (seen.includes(key)) {
+      trace.push({ step: "apply", ok: true, detail: `${subnet.name} uses ${route.tableName}. ${label}.` });
+      trace.push({ step: "apply", ok: true, detail: `Routing loop. ${subnet.name} was already used for ${target}.` });
+      return answered(trace, false, `Routing loop. ${label}.`, LEARN.udr);
+    }
+    if ((hop.hops ?? 1) >= 8) {
+      trace.push({ step: "apply", ok: true, detail: `${subnet.name} uses ${route.tableName}. ${label}.` });
+      trace.push({ step: "apply", ok: true, detail: "This check stops after 8 appliance hops." });
+      return answered(trace, false, `Stopped after 8 appliance hops. ${label}.`, LEARN.udr);
+    }
+    return deliverAppliance(world, trace, subnet, route, {
+      ...hop,
+      hops: (hop.hops ?? 1) + 1,
+      seen: [...seen, key],
+    });
+  }
   trace.push({ step: "apply", ok: true, detail: `${subnet.name} uses ${route.tableName}. ${label}.` });
   if (route.nextHop === "None") {
     trace.push({ step: "apply", ok: true, detail: "Traffic routed to the None next hop type is dropped rather than routed outside the subnet." });
     return answered(trace, false, `Dropped. ${label}.`, LEARN.udr);
-  }
-  if (route.nextHop === "VirtualAppliance") {
-    trace.push({ step: "apply", ok: true, detail: "A second appliance is not part of this check." });
-    return answered(trace, false, `Stopped at ${nic.name}. ${label}. A second appliance is not part of this check.`, LEARN.udr);
   }
   trace.push({ step: "apply", ok: true, detail: "Azure routes that prefix to the internet." });
   return answered(trace, false, `Sent to the internet from ${nic.name}. ${label}.`, LEARN.udr);

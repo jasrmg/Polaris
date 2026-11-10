@@ -632,8 +632,8 @@ describe("inbound internet check", () => {
       nextHopIpAddress: "10.0.1.4",
     }));
     const halted = checkOutboundInternet(second, vmId, 443);
-    assert.match(halted.value?.summary ?? "", /Stopped at nic-nva\. routes\/via-next, 0\.0\.0\.0\/0, next hop VirtualAppliance 10\.0\.1\.4\. A second appliance is not part of this check/);
-    assert.equal((halted.trace.map((line) => line.detail ?? "").join("\n")).includes("Routing loop"), false);
+    assert.match(halted.value?.summary ?? "", /IP forwarding is disabled on nic-web-01/);
+    assert.match(halted.trace.map((line) => line.detail ?? "").join("\n"), /via-next/);
 
     const nsg = must(createResource(droppedWorld, {
       armType: "Microsoft.Network/networkSecurityGroups",
@@ -683,6 +683,89 @@ describe("inbound internet check", () => {
     const stillTrace = stillLocal.trace.map((line) => line.detail ?? "").join("\n");
     assert.match(stillTrace, /system route delivers it/);
     assert.equal(stillTrace.includes("drop-all"), false);
+  });
+
+  it("follows a second appliance, then stops on a loop or the eighth hop", () => {
+    const { world, vmId, subnetId } = linkedWorld();
+    const hop = (current: World, index: number) => {
+      const withSubnet = must(createResource(current, {
+        armType: "Microsoft.Network/virtualNetworks/subnets",
+        name: `snet-nva-${index}`,
+        resourceGroup: "rg-demo",
+        parentName: "vnet-sea",
+        location: "southeastasia",
+        properties: { addressPrefix: `10.0.${index}.0/24` },
+      }));
+      const nvaSubnetId = Object.values(withSubnet.resources).find((resource) => resource.name === `snet-nva-${index}`)!.id;
+      const withNic = must(createResource(withSubnet, {
+        armType: "Microsoft.Network/networkInterfaces",
+        name: `nic-nva-${index}`,
+        resourceGroup: "rg-demo",
+        location: "southeastasia",
+        properties: { subnetId: nvaSubnetId, ipConfigurations: [{ name: "ipconfig1", properties: { subnet: { id: nvaSubnetId } } }] },
+      }));
+      const nicId = Object.values(withNic.resources).find((resource) => resource.name === `nic-nva-${index}`)!.id;
+      return { world: must(setIpForwarding(withNic, nicId, true)), subnetId: nvaSubnetId };
+    };
+    const first = hop(world, 2);
+    const second = hop(first.world, 3);
+    const fromSource = must(addInternetRoute(second.world, subnetId, {
+      tableName: "rt-app",
+      routeName: "via-nva",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "10.0.1.4/32",
+      nextHopIpAddress: "10.0.2.4",
+    }));
+    const onward = must(addInternetRoute(fromSource, first.subnetId, {
+      tableName: "rt-nva-2",
+      routeName: "via-second",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "10.0.1.4/32",
+      nextHopIpAddress: "10.0.3.4",
+    }));
+    const droppedWorld = must(addInternetRoute(onward, second.subnetId, {
+      tableName: "rt-nva-3",
+      routeName: "drop-there",
+      nextHop: "None",
+      addressPrefix: "10.0.1.4/32",
+    }));
+    const dropped = checkSameVirtualNetwork(droppedWorld, vmId, "10.0.1.4", 80);
+    assert.match(dropped.value?.summary ?? "", /Dropped\. routes\/drop-there, 10\.0\.1\.4\/32, next hop None/);
+    assert.match(dropped.trace.map((line) => line.detail ?? "").join("\n"), /nic-nva-2/);
+
+    const looped = must(addInternetRoute(onward, second.subnetId, {
+      tableName: "rt-nva-loop",
+      routeName: "back",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "10.0.1.4/32",
+      nextHopIpAddress: "10.0.2.4",
+    }));
+    const loop = checkSameVirtualNetwork(looped, vmId, "10.0.1.4", 80);
+    assert.match(loop.value?.summary ?? "", /Routing loop/);
+
+    let chained = fromSource;
+    let previousSubnet = first.subnetId;
+    for (let index = 3; index <= 9; index += 1) {
+      const created = index === 3 ? { world: chained, subnetId: second.subnetId } : hop(chained, index);
+      chained = must(addInternetRoute(created.world, previousSubnet, {
+        tableName: `rt-hop-${index - 1}`,
+        routeName: `to-${index}`,
+        nextHop: "VirtualAppliance",
+        addressPrefix: "10.0.1.4/32",
+        nextHopIpAddress: `10.0.${index}.4`,
+      }));
+      previousSubnet = created.subnetId;
+    }
+    chained = must(addInternetRoute(chained, previousSubnet, {
+      tableName: "rt-hop-9",
+      routeName: "to-10",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "10.0.1.4/32",
+      nextHopIpAddress: "10.0.10.4",
+    }));
+    const limited = checkSameVirtualNetwork(chained, vmId, "10.0.1.4", 80);
+    assert.match(limited.value?.summary ?? "", /Stopped after 8 appliance hops/);
+    assert.equal(limited.trace.some((line) => (line.detail ?? "").includes("No network interface")), false);
   });
 
   it("delivers through an appliance when both peerings allow forwarded traffic", () => {
