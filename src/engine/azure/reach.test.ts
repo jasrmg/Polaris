@@ -5,6 +5,7 @@ import {
   addInternetRoute,
   addSecurityRule,
   peerVirtualNetworks,
+  setIpForwarding,
   associateNicSecurityGroup,
   attachNetworkInterface,
   attachPublicIp,
@@ -433,6 +434,141 @@ describe("inbound internet check", () => {
     const disconnected = checkSameVirtualNetwork(removed, vmId, "10.2.0.4", 443);
     assert.equal(disconnected.error?.code, "PeeringNotConnected");
     assert.match(disconnected.error?.message ?? "", /both virtual network peerings is Connected/);
+  });
+
+  it("sends traffic to a virtual appliance and stops there", () => {
+    const { world, vmId, subnetId } = linkedWorld();
+    const withSubnet = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks/subnets",
+      name: "snet-nva",
+      resourceGroup: "rg-demo",
+      parentName: "vnet-sea",
+      location: "southeastasia",
+      properties: { addressPrefix: "10.0.2.0/24" },
+    }));
+    const nvaSubnetId = Object.values(withSubnet.resources).find((resource) => resource.name === "snet-nva")!.id;
+    const withNic = must(createResource(withSubnet, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-nva",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { subnetId: nvaSubnetId, ipConfigurations: [{ name: "ipconfig1", properties: { subnet: { id: nvaSubnetId } } }] },
+    }));
+    const nvaId = Object.values(withNic.resources).find((resource) => resource.name === "nic-nva")!.id;
+    const missing = addInternetRoute(withNic, subnetId, { tableName: "rt-app", routeName: "via-nva", nextHop: "VirtualAppliance", addressPrefix: "0.0.0.0/0" });
+    assert.equal(missing.error?.code, "InvalidNextHopAddress");
+    const routed = must(addInternetRoute(withNic, subnetId, {
+      tableName: "rt-app",
+      routeName: "via-nva",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "0.0.0.0/0",
+      nextHopIpAddress: "10.0.2.4",
+    }));
+    const blocked = checkOutboundInternet(routed, vmId, 443);
+    assert.match(blocked.value?.summary ?? "", /IP forwarding is disabled on nic-nva/);
+    assert.match(blocked.trace.map((line) => line.detail ?? "").join("\n"), /does not say explicitly that Azure drops the packet/);
+    const inside = checkSameVirtualNetwork(routed, vmId, "10.0.1.4", 443);
+    assert.equal(inside.value?.allowed, true);
+    assert.equal((inside.value?.summary ?? "").includes("nic-nva"), false);
+
+    const enabled = must(setIpForwarding(routed, nvaId, true));
+    const sent = checkOutboundInternet(enabled, vmId, 443);
+    assert.match(sent.value?.summary ?? "", /Sent to nic-nva\. routes\/via-nva, 0\.0\.0\.0\/0, next hop VirtualAppliance 10\.0\.2\.4/);
+    assert.match(sent.trace.map((line) => line.detail ?? "").join("\n"), /not part of this check/);
+
+    const looped = must(addInternetRoute(world, subnetId, {
+      tableName: "rt-loop",
+      routeName: "to-self",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "0.0.0.0/0",
+      nextHopIpAddress: "10.0.1.4",
+    }));
+    const loop = checkOutboundInternet(looped, vmId, 443);
+    assert.match(loop.value?.summary ?? "", /Routing loop/);
+    const absent = must(addInternetRoute(world, subnetId, {
+      tableName: "rt-missing",
+      routeName: "nowhere",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "0.0.0.0/0",
+      nextHopIpAddress: "10.9.9.9",
+    }));
+    const gone = checkOutboundInternet(absent, vmId, 443);
+    assert.match(gone.value?.summary ?? "", /No network interface in this virtual network or a peered one has 10\.9\.9\.9/);
+
+    const associated = must(addInboundRule(withNic, subnetId, Object.values(withNic.resources).find((resource) => resource.name === "nsg-web")!.id, { port: 80, access: "Allow", priority: 100 }));
+    const deniedWorld = must(addSecurityRule(associated, Object.values(associated.resources).find((resource) => resource.name === "nsg-web")!.id, {
+      direction: "Outbound",
+      port: 443,
+      access: "Deny",
+      priority: 100,
+    }));
+    const withAppliance = must(addInternetRoute(deniedWorld, subnetId, {
+      tableName: "rt-app",
+      routeName: "via-nva",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "0.0.0.0/0",
+      nextHopIpAddress: "10.0.2.4",
+    }));
+    const denied = checkOutboundInternet(withAppliance, vmId, 443);
+    assert.match(denied.value?.summary ?? "", /securityRules\/Deny-443-Outbound-100/);
+    assert.equal((denied.trace.map((line) => line.detail ?? "").join("\n")).includes("VirtualAppliance"), false);
+
+    const internet = must(addInternetRoute(withNic, subnetId, {
+      tableName: "rt-mix",
+      routeName: "to-internet",
+      nextHop: "Internet",
+      addressPrefix: "0.0.0.0/0",
+    }));
+    const hostRoute = must(addInternetRoute(internet, subnetId, {
+      tableName: "rt-mix",
+      routeName: "via-host",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "10.0.1.4/32",
+      nextHopIpAddress: "10.0.2.4",
+    }));
+    const host = checkSameVirtualNetwork(hostRoute, vmId, "10.0.1.4", 443);
+    assert.match(host.value?.summary ?? "", /IP forwarding is disabled on nic-nva/);
+    const outbound = checkOutboundInternet(hostRoute, vmId, 443);
+    assert.match(outbound.value?.summary ?? "", /not filtered/);
+    assert.equal((outbound.trace.map((line) => line.detail ?? "").join("\n")).includes("via-host"), false);
+
+    const hub = must(createResource(withNic, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-hub",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.2.0.0/16"] } },
+    }));
+    const hubId = Object.values(hub.resources).find((resource) => resource.name === "vnet-hub")!.id;
+    const hubSubnet = must(createResource(hub, {
+      armType: "Microsoft.Network/virtualNetworks/subnets",
+      name: "snet-hub",
+      resourceGroup: "rg-demo",
+      parentName: "vnet-hub",
+      location: "eastasia",
+      properties: { addressPrefix: "10.2.0.0/24" },
+    }));
+    const hubSubnetId = Object.values(hubSubnet.resources).find((resource) => resource.name === "snet-hub")!.id;
+    const hubNic = must(createResource(hubSubnet, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-hub",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      properties: { subnetId: hubSubnetId, ipConfigurations: [{ name: "ipconfig1", properties: { subnet: { id: hubSubnetId } } }] },
+    }));
+    const beforePeer = must(addInternetRoute(hubNic, subnetId, {
+      tableName: "rt-peer",
+      routeName: "via-hub",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "10.0.1.4/32",
+      nextHopIpAddress: "10.2.0.4",
+    }));
+    const outside = checkSameVirtualNetwork(beforePeer, vmId, "10.0.1.4", 443);
+    assert.match(outside.value?.summary ?? "", /No network interface in this virtual network or a peered one has 10\.2\.0\.4/);
+    const seaId = Object.values(world.resources).find((resource) => resource.name === "vnet-sea")!.id;
+    const peered = must(peerVirtualNetworks(beforePeer, seaId, hubId));
+    const forwarded = checkSameVirtualNetwork(peered, vmId, "10.0.1.4", 443);
+    assert.match(forwarded.value?.summary ?? "", /IP forwarding is disabled on nic-hub/);
   });
 
   it("allows a private address in the virtual network, and ignores an internet rule", () => {

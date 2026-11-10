@@ -13,8 +13,9 @@
  * security groups allow the traffic. The virtual network system route is longer
  * than 0.0.0.0/0, so that route does not decide an address inside the network.
  * A longer user route can. An address in a directly peered virtual network is
- * included when both links are Connected. Peering is not transitive. DNS,
- * appliances, and power state are not part of these checks.
+ * included when both links are Connected. Peering is not transitive. A virtual
+ * appliance route sends traffic to that network interface and stops there.
+ * DNS and power state are not part of these checks.
  * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, 2.6, and 2.7.
  */
 
@@ -206,6 +207,7 @@ export function checkOutboundInternet(world: World, vmId: string, port: number):
 function finishOutbound(world: World, trace: TraceLine[], subnet: Resource, summary: string, learnUrl: string): Result<InboundCheck> {
   const route = userInternetRoute(world, subnet);
   if (!route) return answered(trace, true, summary, learnUrl);
+  if (route.nextHop === "VirtualAppliance") return deliverAppliance(world, trace, subnet, route);
   trace.push({
     step: "apply",
     ok: true,
@@ -228,9 +230,9 @@ function winningUserRoute(
   vnet: Resource,
   address: string,
   systemPrefixes: string[] = [],
-): { name: string; prefix: string; nextHop: "None" | "Internet"; tableName: string } | null {
+): ChosenRoute | null {
   let bestLength = -1;
-  let winner: { name: string; prefix: string; nextHop: "None" | "Internet"; tableName: string } | null = null;
+  let winner: ChosenRoute | null = null;
   const consider = (length: number, route: typeof winner) => {
     if (length > bestLength || (length === bestLength && route && !winner)) {
       bestLength = length;
@@ -250,12 +252,20 @@ function winningUserRoute(
   return winner;
 }
 
-function userRoutes(world: World, subnet: Resource): Array<{ name: string; prefix: string; nextHop: "None" | "Internet"; tableName: string }> {
+interface ChosenRoute {
+  name: string;
+  prefix: string;
+  nextHop: "None" | "Internet" | "VirtualAppliance";
+  nextHopIp?: string;
+  tableName: string;
+}
+
+function userRoutes(world: World, subnet: Resource): ChosenRoute[] {
   const tableId = subnet.properties.routeTableId;
   if (typeof tableId !== "string") return [];
   const table = world.resources[canonicalId(tableId)];
   if (!table || !Array.isArray(table.properties.routes)) return [];
-  const routes: Array<{ name: string; prefix: string; nextHop: "None" | "Internet"; tableName: string }> = [];
+  const routes: ChosenRoute[] = [];
   for (const route of table.properties.routes) {
     if (!route || typeof route !== "object") continue;
     const name = (route as { name?: unknown }).name;
@@ -263,27 +273,88 @@ function userRoutes(world: World, subnet: Resource): Array<{ name: string; prefi
     if (typeof name !== "string" || !props || typeof props !== "object") continue;
     const prefix = (props as { addressPrefix?: unknown }).addressPrefix;
     const nextHop = (props as { nextHopType?: unknown }).nextHopType;
-    if (typeof prefix === "string" && (nextHop === "None" || nextHop === "Internet")) {
-      routes.push({ name, prefix, nextHop, tableName: table.name });
+    const nextHopIp = (props as { nextHopIpAddress?: unknown }).nextHopIpAddress;
+    if (typeof prefix !== "string") continue;
+    if (nextHop === "None" || nextHop === "Internet") routes.push({ name, prefix, nextHop, tableName: table.name });
+    if (nextHop === "VirtualAppliance" && typeof nextHopIp === "string") {
+      routes.push({ name, prefix, nextHop, nextHopIp, tableName: table.name });
     }
   }
   return routes;
 }
 
-function userInternetRoute(world: World, subnet: Resource): { name: string; nextHop: "None" | "Internet"; tableName: string } | null {
-  const tableId = subnet.properties.routeTableId;
-  if (typeof tableId !== "string") return null;
-  const table = world.resources[canonicalId(tableId)];
-  if (!table || !Array.isArray(table.properties.routes)) return null;
-  for (const route of table.properties.routes) {
-    if (!route || typeof route !== "object") continue;
-    const name = (route as { name?: unknown }).name;
-    const props = (route as { properties?: unknown }).properties;
-    if (typeof name !== "string" || !props || typeof props !== "object") continue;
-    const prefix = (props as { addressPrefix?: unknown }).addressPrefix;
-    const nextHop = (props as { nextHopType?: unknown }).nextHopType;
-    if (prefix === "0.0.0.0/0" && (nextHop === "None" || nextHop === "Internet")) {
-      return { name, nextHop, tableName: table.name };
+function userInternetRoute(world: World, subnet: Resource): ChosenRoute | null {
+  return userRoutes(world, subnet).find((route) => route.prefix === "0.0.0.0/0") ?? null;
+}
+
+function deliverAppliance(world: World, trace: TraceLine[], sourceSubnet: Resource, route: ChosenRoute): Result<InboundCheck> {
+  const ip = route.nextHopIp ?? "";
+  const label = `routes/${route.name}, ${route.prefix}, next hop VirtualAppliance ${ip}`;
+  trace.push({
+    step: "apply",
+    ok: true,
+    detail: `${sourceSubnet.name} uses ${route.tableName}. ${label}.`,
+  });
+  const found = applianceTarget(world, sourceSubnet, ip);
+  if (!found) {
+    trace.push({ step: "apply", ok: true, detail: `No network interface in this virtual network or a peered one has ${ip}.` });
+    return answered(trace, false, `No network interface in this virtual network or a peered one has ${ip}. (sandbox wording)`, LEARN.udr);
+  }
+  if (canonicalId(found.subnet.id) === canonicalId(sourceSubnet.id)) {
+    trace.push({
+      step: "apply",
+      ok: true,
+      detail: "Deploy the appliance in a different subnet from the traffic sources. Same subnet plus a route table pointing at itself can cause routing loops.",
+    });
+    return answered(trace, false, `Routing loop. ${label}.`, LEARN.udr);
+  }
+  if (found.nic.properties.enableIPForwarding !== true) {
+    trace.push({
+      step: "apply",
+      ok: true,
+      detail: `IP forwarding is disabled on ${found.nic.name}. Learn: a NIC that forwards traffic to an address other than its own must have it enabled.`,
+    });
+    trace.push({ step: "apply", ok: true, detail: "Learn does not say explicitly that Azure drops the packet." });
+    return answered(trace, false, `IP forwarding is disabled on ${found.nic.name}. ${label}.`, LEARN.nic);
+  }
+  trace.push({
+    step: "apply",
+    ok: true,
+    detail: `${found.nic.name} has IP forwarding enabled. The appliance's own rules and operating-system forwarding are not part of this check.`,
+  });
+  return answered(trace, false, `Sent to ${found.nic.name}. ${label}.`, LEARN.udr);
+}
+
+function applianceTarget(world: World, sourceSubnet: Resource, ip: string): { nic: Resource; subnet: Resource } | null {
+  const sourceVnet = parentVirtualNetwork(world, sourceSubnet);
+  if (!sourceVnet) return null;
+  for (const nic of Object.values(world.resources)) {
+    if (nic.type.toLowerCase() !== "microsoft.network/networkinterfaces" || assignedPrivateIp(world, nic) !== ip) continue;
+    const subnetId = nicSubnetId(nic);
+    const subnet = subnetId ? world.resources[canonicalId(subnetId)] : undefined;
+    if (!subnet) continue;
+    const vnet = parentVirtualNetwork(world, subnet);
+    if (!vnet) continue;
+    if (canonicalId(vnet.id) === canonicalId(sourceVnet.id)) return { nic, subnet };
+    const localLink = peeringLink(world, sourceVnet, vnet);
+    const remoteLink = peeringLink(world, vnet, sourceVnet);
+    if (peeringState(localLink) === "Connected" && peeringState(remoteLink) === "Connected") return { nic, subnet };
+  }
+  return null;
+}
+
+function nicSubnetId(nic: Resource): string | null {
+  if (typeof nic.properties.subnetId === "string") return nic.properties.subnetId;
+  const configs = nic.properties.ipConfigurations;
+  if (!Array.isArray(configs)) return null;
+  for (const config of configs) {
+    if (!config || typeof config !== "object") continue;
+    const record = config as Record<string, unknown>;
+    if (typeof record.subnetId === "string") return record.subnetId;
+    const props = record.properties;
+    if (props && typeof props === "object") {
+      const subnet = (props as { subnet?: { id?: unknown } }).subnet;
+      if (subnet && typeof subnet.id === "string") return subnet.id;
     }
   }
   return null;
@@ -411,6 +482,7 @@ export function checkSameVirtualNetwork(world: World, vmId: string, address: str
   }
 
   const selected = winningUserRoute(world, subnet, vnet, destination, peeredPrefixes);
+  if (selected?.nextHop === "VirtualAppliance") return deliverAppliance(world, trace, subnet, selected);
   if (selected) {
     trace.push({
       step: "apply",

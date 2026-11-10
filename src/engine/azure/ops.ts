@@ -896,7 +896,7 @@ export function addSecurityRule(
 export function addInternetRoute(
   world: World,
   subnetId: string,
-  input: { tableName: string; routeName: string; nextHop: "None" | "Internet"; addressPrefix?: string },
+  input: { tableName: string; routeName: string; nextHop: "None" | "Internet" | "VirtualAppliance"; addressPrefix?: string; nextHopIpAddress?: string },
 ): Result<World> {
   const subnet = world.resources[canonicalId(subnetId)];
   if (!subnet || !isType(subnet, "microsoft.network/virtualnetworks/subnets")) {
@@ -912,15 +912,29 @@ export function addInternetRoute(
       learnUrl: LEARN.routeTable,
     });
   }
-  const nextHop = input.nextHop === "Internet" ? "Internet" : input.nextHop === "None" ? "None" : null;
+  const nextHop = input.nextHop === "Internet" ? "Internet" : input.nextHop === "VirtualAppliance" ? "VirtualAppliance" : input.nextHop === "None" ? "None" : null;
   if (!nextHop) {
     return failure([{ step: "parse", ok: true }], {
       code: "InvalidNextHop",
-      message: "Choose a next hop of None or Internet. (sandbox wording)",
-      next: "Choose None to drop traffic, or Internet to send it to the internet.",
+      message: "Choose a next hop of None, Internet, or Virtual appliance. (sandbox wording)",
+      next: "Choose None to drop traffic, Internet to send it to the internet, or Virtual appliance to send it to a private address.",
       step: "validate",
       learnUrl: LEARN.udr,
     });
+  }
+  let nextHopIpAddress = "";
+  if (nextHop === "VirtualAppliance") {
+    const parsedHop = parseCidr(`${(input.nextHopIpAddress ?? "").trim()}/32`);
+    if ("error" in parsedHop || parsedHop.prefix !== 32) {
+      return failure([{ step: "parse", ok: true }], {
+        code: "InvalidNextHopAddress",
+        message: "Enter the private IP address of the virtual appliance. (sandbox wording)",
+        next: "Enter an address such as 10.0.2.4.",
+        step: "validate",
+        learnUrl: LEARN.udr,
+      });
+    }
+    nextHopIpAddress = (input.nextHopIpAddress ?? "").trim();
   }
   const rawPrefix = (input.addressPrefix ?? "0.0.0.0/0").trim();
   const parsedPrefix = parseCidr(rawPrefix);
@@ -1062,11 +1076,30 @@ export function addInternetRoute(
     };
     nextTable.properties = {
       ...nextTable.properties,
-      routes: [...existingRoutes, { name: routeName, properties: { addressPrefix, nextHopType: nextHop } }],
+      routes: [...existingRoutes, {
+        name: routeName,
+        properties: {
+          addressPrefix,
+          nextHopType: nextHop,
+          ...(nextHop === "VirtualAppliance" ? { nextHopIpAddress } : {}),
+        },
+      }],
       provisioningState: "Succeeded",
     };
     return { world: replaceResourcePolicyStates(next, currentTable.id, tablePolicy.states) };
   }, { policy: subjectFromResource(subnet) });
+}
+
+export function setIpForwarding(world: World, nicId: string, enabled: boolean): Result<World> {
+  const existing = world.resources[canonicalId(nicId)];
+  return gate(world, "PATCH", nicId, "Microsoft.Network/networkInterfaces", (current) => {
+    const nic = current.resources[canonicalId(nicId)];
+    if (!nic || !isType(nic, "microsoft.network/networkinterfaces")) return { error: missing("network interface", nicId, LEARN.nic) };
+    const next = cloneWorld(current);
+    const target = next.resources[canonicalId(nic.id)];
+    target.properties = { ...target.properties, enableIPForwarding: enabled, provisioningState: "Succeeded" };
+    return { world: next };
+  }, { policy: existing ? subjectFromResource(existing) : undefined });
 }
 
 export function peerVirtualNetworks(world: World, localVnetId: string, remoteVnetId: string): Result<World> {

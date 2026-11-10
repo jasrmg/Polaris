@@ -51,6 +51,7 @@ function linkLines(resource: Resource, resources: Resource[], world: World): str
   if (typeIs(resource, "microsoft.network/networkinterfaces")) {
     const address = assignedPrivateIp(world, resource);
     if (address) lines.push(`Private IP address: ${address}. The sandbox uses the lowest free address. Azure does not guarantee that order.`);
+    if (resource.properties.enableIPForwarding === true) lines.push("IP forwarding: Enabled.");
   }
   const nicId = firstId(resource.properties.nicIds);
   if (nicId) lines.push(`Network interface: ${named(resources, nicId)}`);
@@ -68,7 +69,9 @@ function linkLines(resource: Resource, resources: Resource[], world: World): str
       if (typeof name !== "string" || !props || typeof props !== "object") continue;
       const prefix = (props as { addressPrefix?: unknown }).addressPrefix;
       const nextHop = (props as { nextHopType?: unknown }).nextHopType;
-      if (typeof prefix === "string" && typeof nextHop === "string") lines.push(`Route ${name}, ${prefix}, next hop ${nextHop}.`);
+      const hopIp = (props as { nextHopIpAddress?: unknown }).nextHopIpAddress;
+      const hop = typeof nextHop === "string" && typeof hopIp === "string" && nextHop === "VirtualAppliance" ? `${nextHop} ${hopIp}` : String(nextHop);
+      if (typeof prefix === "string" && typeof nextHop === "string") lines.push(`Route ${name}, ${prefix}, next hop ${hop}.`);
     }
   }
   if (typeIs(resource, "microsoft.network/virtualnetworks")) {
@@ -249,6 +252,12 @@ export function EnvironmentView() {
     }));
   }
 
+  function saveForwarding(nicId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const enabled = new FormData(event.currentTarget).get("forwarding") === "true";
+    void run((engine, current) => engine.setIpForwarding(current, nicId, enabled));
+  }
+
   function peerNetworks(localVnetId: string, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const remoteVnetId = String(new FormData(event.currentTarget).get("remote") ?? "");
@@ -259,12 +268,14 @@ export function EnvironmentView() {
   function addSubnetRoute(subnetId: string, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const nextHop = data.get("nextHop") === "Internet" ? "Internet" : "None";
+    const rawHop = data.get("nextHop");
+    const nextHop = rawHop === "Internet" ? "Internet" : rawHop === "VirtualAppliance" ? "VirtualAppliance" : "None";
     void run((engine, current) => engine.addInternetRoute(current, subnetId, {
       tableName: String(data.get("tableName") ?? ""),
       routeName: String(data.get("routeName") ?? ""),
       addressPrefix: String(data.get("addressPrefix") ?? ""),
       nextHop,
+      nextHopIpAddress: String(data.get("nextHopIp") ?? ""),
     }));
   }
 
@@ -461,7 +472,7 @@ export function EnvironmentView() {
                               />
                               <CheckForm
                                 label="Outbound to the internet, destination port"
-                                note="A new TCP connection from the virtual machine to the internet. The network interface is checked first. An inbound rule does not decide this. A 0.0.0.0/0 route on the subnet is used after the security groups allow the traffic. Peering and DNS are not part of this check."
+                                note="A new TCP connection from the virtual machine to the internet. The network interface is checked first. An inbound rule does not decide this. A 0.0.0.0/0 route on the subnet is used after the security groups allow the traffic. A virtual appliance route stops at that network interface. Peering and DNS are not part of this check."
                                 result={checks[`${resource.id}:out`]}
                                 onSubmit={(event) => checkTraffic(resource.id, "out", event)}
                               />
@@ -478,7 +489,7 @@ export function EnvironmentView() {
                                   <Button type="submit" size="sm">Check</Button>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. Peering is not transitive. DNS and power state are not part of this check.
+                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A virtual appliance route stops at that network interface. Peering is not transitive. DNS and power state are not part of this check.
                                 </p>
                                 {checks[`${resource.id}:vnet`] && (
                                   <div className="rounded-lg border p-3 text-sm">
@@ -527,6 +538,19 @@ export function EnvironmentView() {
                                   <Button type="submit" size="sm" className="w-fit">Associate</Button>
                                 </form>
                               )}
+                              <form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end" onSubmit={(event) => saveForwarding(resource.id, event)}>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  IP forwarding
+                                  <select name="forwarding" className={selectClass} defaultValue={resource.properties.enableIPForwarding === true ? "true" : "false"}>
+                                    <option value="false">Disabled</option>
+                                    <option value="true">Enabled</option>
+                                  </select>
+                                </label>
+                                <Button type="submit" size="sm">Save</Button>
+                              </form>
+                              <p className="text-xs text-muted-foreground">
+                                Azure setting on this network interface. A network interface that forwards traffic to another address must have it enabled. The guest operating system is not part of this check.
+                              </p>
                             </div>
                           )}
                           {isNsg && (
@@ -622,7 +646,7 @@ export function EnvironmentView() {
                               </form>
                             )}
                             <form className="mt-3 grid gap-2" onSubmit={(event) => addSubnetRoute(resource.id, event)}>
-                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
                                 <label className="grid min-w-0 gap-1 text-sm">
                                   Route table
                                   <Input name="tableName" defaultValue="rt-app" />
@@ -640,11 +664,16 @@ export function EnvironmentView() {
                                   <select name="nextHop" className={selectClass} defaultValue="None">
                                     <option value="None">None</option>
                                     <option value="Internet">Internet</option>
+                                    <option value="VirtualAppliance">Virtual appliance</option>
                                   </select>
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Next hop address
+                                  <Input name="nextHopIp" defaultValue="10.0.2.4" autoComplete="off" />
                                 </label>
                               </div>
                               <p className="text-xs text-muted-foreground">
-                                One route. The longest matching prefix wins, and a prefix can sit inside another. 0.0.0.0/0 changes outbound internet traffic after the security groups allow it. A longer prefix can decide an address inside the virtual network. None drops that traffic. Internet sends it to the internet. A subnet can have one route table.
+                                One route. The longest matching prefix wins, and a prefix can sit inside another. 0.0.0.0/0 changes outbound internet traffic after the security groups allow it. A longer prefix can decide an address inside the virtual network. None drops that traffic. Internet sends it to the internet. Virtual appliance sends it to a private address in a different subnet, and the check stops at that network interface. A subnet can have one route table.
                               </p>
                               <Button type="submit" size="sm" className="w-fit">Add route</Button>
                             </form>
