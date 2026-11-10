@@ -132,6 +132,23 @@ function linkLines(resource: Resource, resources: Resource[], world: World): str
       }
     }
   }
+  if (typeIs(resource, "microsoft.network/virtualnetworks/subnets")) {
+    const endpoints = resource.properties.serviceEndpoints;
+    const storage = Array.isArray(endpoints) && endpoints.some((item) => item && typeof item === "object" && (item as { service?: unknown }).service === "Microsoft.Storage");
+    if (storage) lines.push("Service endpoint: Microsoft.Storage.");
+  }
+  if (typeIs(resource, "microsoft.storage/storageaccounts")) {
+    const acls = resource.properties.networkAcls;
+    const fields = acls && typeof acls === "object" ? acls as { defaultAction?: unknown; virtualNetworkRules?: unknown } : {};
+    const action = fields.defaultAction === "Deny" ? "Deny" : "Allow";
+    const rules = Array.isArray(fields.virtualNetworkRules) ? fields.virtualNetworkRules : [];
+    const names = rules.flatMap((rule) => {
+      if (!rule || typeof rule !== "object") return [];
+      const id = (rule as { id?: unknown }).id;
+      return typeof id === "string" ? [named(resources, id)] : [];
+    });
+    lines.push(`Storage firewall default action ${action}.${names.length > 0 ? ` Virtual network rule: ${names.join(", ")}.` : ""}`);
+  }
   const rules = resource.properties.securityRules;
   if (!Array.isArray(rules)) return lines;
   for (const rule of rules) {
@@ -344,6 +361,41 @@ export function EnvironmentView() {
     void run((engine, current) => engine.peerVirtualNetworks(current, localVnetId, remoteVnetId));
   }
 
+  function saveServiceEndpoint(subnetId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const service = new FormData(event.currentTarget).get("service") === "Microsoft.Storage" ? "Microsoft.Storage" : "None";
+    void run((engine, current) => engine.setServiceEndpoint(current, subnetId, service));
+  }
+
+  function saveStorageFirewall(accountId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const subnetId = String(data.get("subnet") ?? "");
+    void run((engine, current) => engine.setStorageFirewall(current, accountId, {
+      defaultAction: data.get("defaultAction") === "Deny" ? "Deny" : "Allow",
+      subnetId,
+    }));
+  }
+
+  function checkStorageAccount(vmId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session.engine || !session.world) return;
+    const data = new FormData(event.currentTarget);
+    const result = session.engine.checkStorage(session.world, vmId, String(data.get("account") ?? ""), Number(data.get("port")));
+    if (!result.ok || !result.value) {
+      setError(result.error ?? { code: "Failed", message: "The check could not run.", step: "validate" });
+      return;
+    }
+    setError(null);
+    setChecks((current) => ({
+      ...current,
+      [`${vmId}:storage`]: {
+        ...result.value!,
+        details: result.trace.flatMap((line) => line.detail ? [line.detail] : []),
+      },
+    }));
+  }
+
   function addSubnetRoute(subnetId: string, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -479,6 +531,9 @@ export function EnvironmentView() {
                       const otherVnets = resources.filter((item) => typeIs(item, "microsoft.network/virtualnetworks") && item.id !== resource.id);
                       const peerings = resources.filter((item) => item.id.toLowerCase().startsWith(`${resource.id.toLowerCase()}/virtualnetworkpeerings/`) && typeof item.properties.remoteVirtualNetworkId === "string");
                       const isNsg = typeIs(resource, "microsoft.network/networksecuritygroups");
+                      const isStorage = typeIs(resource, "microsoft.storage/storageaccounts");
+                      const storageAccounts = resources.filter((item) => typeIs(item, "microsoft.storage/storageaccounts"));
+                      const allSubnets = resources.filter((item) => typeIs(item, "microsoft.network/virtualnetworks/subnets"));
                       const canPower = provisioning === "Succeeded";
                       const links = linkLines(resource, resources, world);
                       const nics = inside.filter((item) => typeIs(item, "microsoft.network/networkinterfaces"));
@@ -585,6 +640,41 @@ export function EnvironmentView() {
                                   </div>
                                 )}
                               </form>
+                              {storageAccounts.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">Create a storage account to check one.</p>
+                              ) : (
+                                <form className="grid gap-2" onSubmit={(event) => checkStorageAccount(resource.id, event)}>
+                                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_auto] sm:items-end">
+                                    <label className="grid min-w-0 gap-1 text-sm">
+                                      To a storage account
+                                      <select name="account" className={selectClass} defaultValue={storageAccounts[0]?.id}>
+                                        {storageAccounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.location}</option>)}
+                                      </select>
+                                    </label>
+                                    <label className="grid min-w-0 gap-1 text-sm">
+                                      Destination port
+                                      <Input name="port" type="number" defaultValue={443} />
+                                    </label>
+                                    <Button type="submit" size="sm">Check</Button>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">
+                                    TCP from this virtual machine to the storage account. The network interface is checked first. Microsoft.Storage on this subnet uses a service endpoint route, and a user route does not override it. The service keeps its public address. The sandbox does not list the service prefixes. Microsoft.Storage covers this region and its pair. When the storage firewall default action is Deny, this subnet must be a virtual network rule. A service endpoint policy is not part of this check.
+                                  </p>
+                                  {checks[`${resource.id}:storage`] && (
+                                    <div className="rounded-lg border p-3 text-sm">
+                                      <p className={checks[`${resource.id}:storage`].allowed ? "text-emerald-800 dark:text-emerald-300" : undefined}>{checks[`${resource.id}:storage`].summary}</p>
+                                      <ul className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                                        {checks[`${resource.id}:storage`].details.map((line, index) => (
+                                          <li key={`${index}-${line}`} className="min-w-0 [overflow-wrap:anywhere]">{line}</li>
+                                        ))}
+                                      </ul>
+                                      <a href={checks[`${resource.id}:storage`].learnUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-primary underline-offset-4 hover:underline">
+                                        Microsoft Learn
+                                      </a>
+                                    </div>
+                                  )}
+                                </form>
+                              )}
                             </div>
                           )}
                           {isNic && (
@@ -839,7 +929,51 @@ export function EnvironmentView() {
                               </p>
                               <Button type="submit" size="sm" className="w-fit">Add route</Button>
                             </form>
+                            <form className="mt-3 grid gap-2" onSubmit={(event) => saveServiceEndpoint(resource.id, event)}>
+                              <label className="grid min-w-0 gap-1 text-sm">
+                                Service endpoint
+                                <select name="service" className={selectClass} defaultValue={Array.isArray(resource.properties.serviceEndpoints) && resource.properties.serviceEndpoints.some((item) => item && typeof item === "object" && (item as { service?: unknown }).service === "Microsoft.Storage") ? "Microsoft.Storage" : "None"}>
+                                  <option value="None">None</option>
+                                  <option value="Microsoft.Storage">Microsoft.Storage</option>
+                                </select>
+                              </label>
+                              <p className="text-xs text-muted-foreground">
+                                Microsoft.Storage on this subnet. The service keeps its public address. This route is preferred over a user route, including 0.0.0.0/0. It covers storage in this region and the paired region. A service endpoint policy is not part of this check.
+                              </p>
+                              <Button type="submit" size="sm" className="w-fit">Save</Button>
+                            </form>
                             </>
+                          )}
+                          {isStorage && (
+                            <form className="mt-3 grid gap-2" onSubmit={(event) => saveStorageFirewall(resource.id, event)}>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Default action
+                                  <select name="defaultAction" className={selectClass} defaultValue={resource.properties.networkAcls && typeof resource.properties.networkAcls === "object" && (resource.properties.networkAcls as { defaultAction?: unknown }).defaultAction === "Deny" ? "Deny" : "Allow"}>
+                                    <option value="Allow">Allow</option>
+                                    <option value="Deny">Deny</option>
+                                  </select>
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Virtual network rule
+                                  <select name="subnet" className={selectClass} defaultValue={(() => {
+                                    const acls = resource.properties.networkAcls;
+                                    const rules = acls && typeof acls === "object" && Array.isArray((acls as { virtualNetworkRules?: unknown }).virtualNetworkRules)
+                                      ? (acls as { virtualNetworkRules: unknown[] }).virtualNetworkRules
+                                      : [];
+                                    const first = rules.find((rule) => rule && typeof rule === "object" && typeof (rule as { id?: unknown }).id === "string") as { id?: string } | undefined;
+                                    return first?.id ?? "";
+                                  })()}>
+                                    <option value="">None</option>
+                                    {allSubnets.map((subnet) => <option key={subnet.id} value={subnet.id}>{subnet.name}</option>)}
+                                  </select>
+                                </label>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Default action Deny blocks a subnet that is not listed. This saves one virtual network rule. The virtual machine check uses the subnet the virtual machine is on.
+                              </p>
+                              <Button type="submit" size="sm" className="w-fit">Save</Button>
+                            </form>
                           )}
                         </li>
                       );

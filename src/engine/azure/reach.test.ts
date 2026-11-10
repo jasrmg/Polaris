@@ -11,12 +11,15 @@ import {
   setPeeringOptions,
   setPower,
   setIpForwarding,
+  setServiceEndpoint,
+  setStorageFirewall,
   associateNicSecurityGroup,
   attachNetworkInterface,
   attachPublicIp,
   checkInboundInternet,
   checkOutboundInternet,
   checkSameVirtualNetwork,
+  checkStorage,
   createResource,
   deleteResource,
   createResourceGroup,
@@ -683,6 +686,62 @@ describe("inbound internet check", () => {
     const stillTrace = stillLocal.trace.map((line) => line.detail ?? "").join("\n");
     assert.match(stillTrace, /system route delivers it/);
     assert.equal(stillTrace.includes("drop-all"), false);
+  });
+
+  it("uses a Microsoft.Storage service endpoint instead of a user route", () => {
+    const { world, vmId, subnetId } = linkedWorld();
+    const account = must(createResource(world, {
+      armType: "Microsoft.Storage/storageAccounts",
+      name: "stsea001",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      sku: { name: "Standard_LRS" },
+      kind: "StorageV2",
+    }));
+    const accountId = Object.values(account.resources).find((resource) => resource.name === "stsea001")!.id;
+    const blocked = must(addInternetRoute(account, subnetId, {
+      tableName: "rt-app",
+      routeName: "drop-internet",
+      nextHop: "None",
+      addressPrefix: "0.0.0.0/0",
+    }));
+    const dropped = checkStorage(blocked, vmId, accountId, 443);
+    assert.match(dropped.value?.summary ?? "", /Dropped\. routes\/drop-internet/);
+    assert.match(dropped.trace.map((line) => line.detail ?? "").join("\n"), /firewall is not consulted/);
+    const internet = checkOutboundInternet(blocked, vmId, 443);
+    assert.match(internet.value?.summary ?? "", /Dropped\. routes\/drop-internet/);
+
+    const enabled = must(setServiceEndpoint(blocked, subnetId, "Microsoft.Storage"));
+    const open = checkStorage(enabled, vmId, accountId, 443);
+    assert.equal(open.value?.allowed, true, open.error?.message);
+    const openTrace = open.trace.map((line) => line.detail ?? "").join("\n");
+    assert.match(openTrace, /VirtualNetworkServiceEndpoint/);
+    assert.match(openTrace, /eastasia, the paired region of southeastasia/);
+    assert.equal(openTrace.includes("drop-internet"), false);
+
+    const denied = must(setStorageFirewall(enabled, accountId, { defaultAction: "Deny", subnetId: "" }));
+    const rejected = checkStorage(denied, vmId, accountId, 443);
+    assert.equal(rejected.value?.allowed, false);
+    assert.match(rejected.value?.summary ?? "", /HTTP 403 or 404/);
+
+    const allowed = must(setStorageFirewall(denied, accountId, { defaultAction: "Deny", subnetId }));
+    const accepted = checkStorage(allowed, vmId, accountId, 443);
+    assert.equal(accepted.value?.allowed, true, accepted.error?.message);
+    assert.match(accepted.value?.summary ?? "", /Virtual network rule/);
+
+    const nsg = must(createResource(allowed, {
+      armType: "Microsoft.Network/networkSecurityGroups",
+      name: "nsg-storage",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+    }));
+    const nsgId = Object.values(nsg.resources).find((resource) => resource.name === "nsg-storage")!.id;
+    const ruled = must(addSecurityRule(nsg, nsgId, { direction: "Outbound", port: 443, access: "Deny", priority: 100 }));
+    const nicId = Object.values(ruled.resources).find((resource) => resource.name === "nic-web-01")!.id;
+    const associated = must(associateNicSecurityGroup(ruled, nicId, nsgId));
+    const stopped = checkStorage(associated, vmId, accountId, 443);
+    assert.match(stopped.value?.summary ?? "", /Deny-443-Outbound-100/);
+    assert.equal(stopped.trace.some((line) => (line.detail ?? "").includes("VirtualNetworkServiceEndpoint")), false);
   });
 
   it("follows a second appliance, then stops on a loop or the eighth hop", () => {

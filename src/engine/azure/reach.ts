@@ -1,5 +1,5 @@
 /**
- * Three reachability questions, each for one TCP port.
+ * Reachability questions, each for one TCP port.
  * Inbound: from the internet to a virtual machine's public IP. Subnet network
  * security group first, then the network interface.
  * Outbound: from the virtual machine to the internet. Network interface first,
@@ -25,7 +25,10 @@
  * DNS still resolves a running virtual machine's name when no linked zone matches.
  * Auto-registration writes an A record for a running virtual machine and removes
  * it when that virtual machine is stopped or deleted. Custom DNS is not part of
- * these checks. An address does not consult power state.
+ * these checks. An address does not consult power state. Microsoft.Storage on the
+ * source subnet sends that storage traffic to a service endpoint route, which a
+ * user route does not override. The storage firewall is checked after the network
+ * path allows it.
  * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, 2.6, and 2.7.
  */
 
@@ -212,6 +215,109 @@ export function checkOutboundInternet(world: World, vmId: string, port: number):
   trace.push({ step: "apply", ok: true, detail: `${subnet.name} uses ${subnetNsg.name}. ${ruleLine(matched)}` });
   if (matched.access === "Deny") return answered(trace, false, verdict(matched), LEARN.nsgOverview);
   return finishOutbound(world, trace, subnet, verdict(matched), LEARN.nsgOverview, port);
+}
+
+export function checkStorage(world: World, vmId: string, accountId: string, port: number): Result<InboundCheck> {
+  const account = world.resources[canonicalId(accountId)];
+  if (!account || account.type.toLowerCase() !== "microsoft.storage/storageaccounts") {
+    return failure([{ step: "parse", ok: true }], {
+      code: "NotFound",
+      message: "Choose a storage account. (sandbox wording)",
+      step: "validate",
+      learnUrl: LEARN.storageFirewall,
+      next: "Create a storage account, then run the check again.",
+    });
+  }
+  const opened = openPath(world, vmId, port, `TCP to storage account ${account.name}.`);
+  if (isResult(opened)) return opened;
+  const { trace, vm, nic, subnet } = opened;
+  trace.push({ step: "validate", ok: true, detail: `${vm.name} uses ${nic.name}. Destination ${account.name}, port ${port}.` });
+  const nicNsg = attachedNsg(world, nic);
+  const subnetNsg = attachedNsg(world, subnet);
+  if (!nicNsg) trace.push({ step: "apply", ok: true, detail: `No network security group on ${nic.name}. No NSG at this layer.` });
+  else {
+    const matched = firstMatch(nicNsg, port, "outbound");
+    trace.push({ step: "apply", ok: true, detail: `${nic.name} uses ${nicNsg.name}. ${ruleLine(matched)}` });
+    if (matched.access === "Deny") {
+      trace.push({ step: "apply", ok: true, detail: "The network interface denied the traffic. The subnet does not see it." });
+      return answered(trace, false, verdict(matched), LEARN.nsgOverview);
+    }
+  }
+  if (!subnetNsg) trace.push({ step: "apply", ok: true, detail: `No network security group on ${subnet.name}. No NSG at this layer.` });
+  else {
+    const matched = firstMatch(subnetNsg, port, "outbound");
+    trace.push({ step: "apply", ok: true, detail: `${subnet.name} uses ${subnetNsg.name}. ${ruleLine(matched)}` });
+    if (matched.access === "Deny") return answered(trace, false, verdict(matched), LEARN.nsgOverview);
+  }
+  const vnet = parentVirtualNetwork(world, subnet);
+  const covered = Boolean(vnet) && hasStorageEndpoint(subnet) && storageRegionCovered(vnet?.location ?? "", account.location);
+  if (covered && vnet) {
+    trace.push({
+      step: "apply",
+      ok: true,
+      detail: `${subnet.name} has a Microsoft.Storage service endpoint. Next hop VirtualNetworkServiceEndpoint. A user route does not override it. The sandbox does not list the service prefixes.`,
+    });
+    if (account.location.toLowerCase() !== vnet.location.toLowerCase()) {
+      trace.push({
+        step: "apply",
+        ok: true,
+        detail: `${account.name} is in ${account.location}, the paired region of ${vnet.location}. Microsoft.Storage includes that pair.`,
+      });
+    }
+    return storageFirewall(trace, account, subnet);
+  }
+  const route = userInternetRoute(world, subnet);
+  if (route?.nextHop === "VirtualAppliance") {
+    const delivered = deliverAppliance(world, trace, subnet, route, { port, scope: "internet" });
+    trace.push({ step: "apply", ok: true, detail: "The storage firewall is not consulted." });
+    return delivered;
+  }
+  if (route?.nextHop === "None") {
+    trace.push({ step: "apply", ok: true, detail: `${subnet.name} uses ${route.tableName}. routes/${route.name}, 0.0.0.0/0, next hop None.` });
+    trace.push({ step: "apply", ok: true, detail: "Traffic routed to the None next hop type is dropped rather than routed outside the subnet." });
+    trace.push({ step: "apply", ok: true, detail: "The storage firewall is not consulted." });
+    return answered(trace, false, `Dropped. routes/${route.name}, 0.0.0.0/0, next hop None.`, LEARN.udr);
+  }
+  if (route?.nextHop === "Internet") {
+    trace.push({ step: "apply", ok: true, detail: `${subnet.name} uses ${route.tableName}. routes/${route.name}, 0.0.0.0/0, next hop Internet.` });
+  }
+  return storageFirewall(trace, account, subnet);
+}
+
+function hasStorageEndpoint(subnet: Resource): boolean {
+  const endpoints = subnet.properties.serviceEndpoints;
+  if (!Array.isArray(endpoints)) return false;
+  return endpoints.some((item) => item && typeof item === "object" && (item as { service?: unknown }).service === "Microsoft.Storage");
+}
+
+function storageRegionCovered(vnetLocation: string, accountLocation: string): boolean {
+  const vnet = vnetLocation.toLowerCase();
+  const account = accountLocation.toLowerCase();
+  if (vnet === account) return true;
+  const pair: Record<string, string> = { southeastasia: "eastasia", eastasia: "southeastasia" };
+  return pair[vnet] === account;
+}
+
+function storageFirewall(trace: TraceLine[], account: Resource, subnet: Resource): Result<InboundCheck> {
+  const acls = account.properties.networkAcls;
+  const fields = acls && typeof acls === "object" ? acls as { defaultAction?: unknown; virtualNetworkRules?: unknown } : {};
+  const defaultAction = fields.defaultAction === "Deny" ? "Deny" : "Allow";
+  if (defaultAction === "Allow") {
+    trace.push({ step: "apply", ok: true, detail: `${account.name} storage firewall default action is Allow.` });
+    return answered(trace, true, `${account.name} allows the connection. The storage firewall default action is Allow.`, LEARN.storageFirewall);
+  }
+  const rules = Array.isArray(fields.virtualNetworkRules) ? fields.virtualNetworkRules : [];
+  const listed = rules.some((rule) => {
+    if (!rule || typeof rule !== "object") return false;
+    const id = (rule as { id?: unknown }).id;
+    return typeof id === "string" && canonicalId(id) === canonicalId(subnet.id);
+  });
+  if (!listed) {
+    trace.push({ step: "apply", ok: true, detail: `${account.name} storage firewall default action is Deny, and ${subnet.name} is not listed.` });
+    return answered(trace, false, `${account.name} does not allow ${subnet.name}. Access from outside returns HTTP 403 or 404. (sandbox wording)`, LEARN.storageFirewall);
+  }
+  trace.push({ step: "apply", ok: true, detail: `${account.name} allows ${subnet.name} by a virtual network rule.` });
+  return answered(trace, true, `${account.name} allows ${subnet.name}. Virtual network rule.`, LEARN.storageFirewall);
 }
 
 function finishOutbound(world: World, trace: TraceLine[], subnet: Resource, summary: string, learnUrl: string, port: number): Result<InboundCheck> {

@@ -1201,6 +1201,53 @@ export function setPeeringOptions(
   }, { policy: subjectFromResource(localLink) });
 }
 
+export function setServiceEndpoint(world: World, subnetId: string, service: "Microsoft.Storage" | "None"): Result<World> {
+  const existing = world.resources[canonicalId(subnetId)];
+  return gate(world, "PATCH", subnetId, "Microsoft.Network/virtualNetworks/subnets", (current) => {
+    const subnet = current.resources[canonicalId(subnetId)];
+    if (!subnet || !isType(subnet, "microsoft.network/virtualnetworks/subnets")) return { error: missing("subnet", subnetId, LEARN.subnet) };
+    const next = cloneWorld(current);
+    const target = next.resources[canonicalId(subnet.id)];
+    target.properties = {
+      ...target.properties,
+      serviceEndpoints: service === "None" ? [] : [{ service: "Microsoft.Storage" }],
+      provisioningState: "Succeeded",
+    };
+    return { world: next };
+  }, { policy: existing ? subjectFromResource(existing) : undefined });
+}
+
+export function setStorageFirewall(
+  world: World,
+  accountId: string,
+  input: { defaultAction: "Allow" | "Deny"; subnetId?: string },
+): Result<World> {
+  const existing = world.resources[canonicalId(accountId)];
+  return gate(world, "PATCH", accountId, "Microsoft.Storage/storageAccounts", (current) => {
+    const account = current.resources[canonicalId(accountId)];
+    if (!account || !isType(account, "microsoft.storage/storageaccounts")) return { error: missing("storage account", accountId, LEARN.storageFirewall) };
+    const subnet = input.subnetId ? current.resources[canonicalId(input.subnetId)] : undefined;
+    if (input.subnetId && (!subnet || !isType(subnet, "microsoft.network/virtualnetworks/subnets"))) {
+      return { error: missing("subnet", input.subnetId, LEARN.subnet) };
+    }
+    const previous = account.properties.networkAcls;
+    const previousRules = previous && typeof previous === "object" && Array.isArray((previous as { virtualNetworkRules?: unknown }).virtualNetworkRules)
+      ? (previous as { virtualNetworkRules: unknown[] }).virtualNetworkRules
+      : [];
+    const next = cloneWorld(current);
+    const target = next.resources[canonicalId(account.id)];
+    target.properties = {
+      ...target.properties,
+      networkAcls: {
+        defaultAction: input.defaultAction,
+        virtualNetworkRules: subnet ? [{ id: subnet.id, action: "Allow" }] : input.subnetId === undefined ? previousRules : [],
+      },
+      provisioningState: "Succeeded",
+    };
+    return { world: next };
+  }, { policy: existing ? subjectFromResource(existing) : undefined });
+}
+
 export function setIpForwarding(world: World, nicId: string, enabled: boolean): Result<World> {
   const existing = world.resources[canonicalId(nicId)];
   return gate(world, "PATCH", nicId, "Microsoft.Network/networkInterfaces", (current) => {
