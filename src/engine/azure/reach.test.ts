@@ -13,6 +13,7 @@ import {
   setIpForwarding,
   setServiceEndpoint,
   setStorageFirewall,
+  addStoragePrivateEndpoint,
   associateNicSecurityGroup,
   attachNetworkInterface,
   attachPublicIp,
@@ -742,6 +743,123 @@ describe("inbound internet check", () => {
     const stopped = checkStorage(associated, vmId, accountId, 443);
     assert.match(stopped.value?.summary ?? "", /Deny-443-Outbound-100/);
     assert.equal(stopped.trace.some((line) => (line.detail ?? "").includes("VirtualNetworkServiceEndpoint")), false);
+  });
+
+  it("uses an approved blob private endpoint instead of the public path", () => {
+    const { world, vmId, nicId, subnetId } = linkedWorld();
+    const account = must(createResource(world, {
+      armType: "Microsoft.Storage/storageAccounts",
+      name: "stsea001",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      sku: { name: "Standard_LRS" },
+      kind: "StorageV2",
+    }));
+    const accountId = Object.values(account.resources).find((resource) => resource.name === "stsea001")!.id;
+    const blocked = must(addInternetRoute(account, subnetId, {
+      tableName: "rt-app",
+      routeName: "drop-internet",
+      nextHop: "None",
+      addressPrefix: "0.0.0.0/0",
+    }));
+    const before = JSON.stringify(blocked);
+    const missing = addStoragePrivateEndpoint(blocked, accountId, "missing", "pe-st-blob");
+    assert.equal(missing.ok, false);
+    assert.equal(JSON.stringify(blocked), before);
+    const dropped = checkStorage(blocked, vmId, accountId, 443);
+    assert.match(dropped.value?.summary ?? "", /Dropped\. routes\/drop-internet/);
+
+    const withEndpoint = must(addStoragePrivateEndpoint(blocked, accountId, subnetId, "pe-st-blob"));
+    const endpoint = Object.values(withEndpoint.resources).find((resource) => resource.name === "pe-st-blob")!;
+    assert.equal(endpoint.location, "southeastasia");
+    assert.equal(endpoint.properties.privateIPAddress, "10.0.1.5");
+    const open = checkStorage(withEndpoint, vmId, accountId, 443);
+    assert.equal(open.value?.allowed, true, open.error?.message);
+    const openTrace = open.trace.map((line) => line.detail ?? "").join("\n");
+    assert.match(openTrace, /10\.0\.1\.5/);
+    assert.match(openTrace, /does not turn off the public endpoint/);
+    assert.match(openTrace, /network policies disabled on subnet, NSG not applied to the private endpoint/);
+    assert.equal(openTrace.includes("drop-internet"), false);
+    assert.equal(openTrace.toLowerCase().includes("storage firewall is not consulted"), true);
+
+    const specific = must(addInternetRoute(withEndpoint, subnetId, {
+      tableName: "rt-app",
+      routeName: "drop-endpoint",
+      nextHop: "None",
+      addressPrefix: "10.0.1.5/32",
+    }));
+    const still = checkStorage(specific, vmId, accountId, 443);
+    assert.equal(still.value?.allowed, true, still.error?.message);
+    assert.match(still.trace.map((line) => line.detail ?? "").join("\n"), /does not override 10\.0\.1\.5/);
+
+    const again = addStoragePrivateEndpoint(specific, accountId, subnetId, "pe-st-blob-2");
+    assert.equal(again.ok, false);
+    assert.equal(again.error?.code, "ResourceAlreadyExists");
+    const removedAccount = deleteResource(specific, accountId);
+    assert.equal(removedAccount.ok, false);
+    assert.match(removedAccount.error?.next ?? "", /Delete the private endpoint/);
+    const removedSubnet = deleteResource(specific, subnetId);
+    assert.equal(removedSubnet.ok, false);
+    assert.match(removedSubnet.error?.message ?? "", /no resources in the subnet/);
+
+    const nsg = must(createResource(specific, {
+      armType: "Microsoft.Network/networkSecurityGroups",
+      name: "nsg-private",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+    }));
+    const nsgId = Object.values(nsg.resources).find((resource) => resource.name === "nsg-private")!.id;
+    const internetDeny = must(addSecurityRule(nsg, nsgId, { direction: "Outbound", port: 443, access: "Deny", priority: 100 }));
+    const associated = must(associateNicSecurityGroup(internetDeny, nicId, nsgId));
+    const ignored = checkStorage(associated, vmId, accountId, 443);
+    assert.equal(ignored.value?.allowed, true, ignored.value?.summary);
+    const vnetDeny = must(addSecurityRule(associated, nsgId, { direction: "Outbound", port: 443, access: "Deny", priority: 110, scope: "vnet" }));
+    const stopped = checkStorage(vnetDeny, vmId, accountId, 443);
+    assert.equal(stopped.value?.allowed, false);
+    assert.match(stopped.trace.map((line) => line.detail ?? "").join("\n"), /private endpoint route is not consulted/);
+  });
+
+  it("reaches a blob private endpoint in a peered virtual network", () => {
+    const { world, vmId, subnetId } = linkedWorld();
+    let next = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-hub",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.2.0.0/16"] } },
+    }));
+    next = must(createResource(next, {
+      armType: "Microsoft.Network/virtualNetworks/subnets",
+      name: "snet-hub",
+      resourceGroup: "rg-demo",
+      parentName: "vnet-hub",
+      location: "southeastasia",
+      properties: { addressPrefix: "10.2.0.0/24" },
+    }));
+    const hubSubnetId = Object.values(next.resources).find((resource) => resource.name === "snet-hub")!.id;
+    const seaId = Object.values(next.resources).find((resource) => resource.name === "vnet-sea")!.id;
+    const hubId = Object.values(next.resources).find((resource) => resource.name === "vnet-hub")!.id;
+    next = must(createResource(next, {
+      armType: "Microsoft.Storage/storageAccounts",
+      name: "stpeer001",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      sku: { name: "Standard_LRS" },
+      kind: "StorageV2",
+    }));
+    const accountId = Object.values(next.resources).find((resource) => resource.name === "stpeer001")!.id;
+    next = must(peerVirtualNetworks(next, seaId, hubId));
+    next = must(addInternetRoute(next, subnetId, {
+      tableName: "rt-app",
+      routeName: "drop-internet",
+      nextHop: "None",
+      addressPrefix: "0.0.0.0/0",
+    }));
+    next = must(addStoragePrivateEndpoint(next, accountId, hubSubnetId, "pe-peer"));
+    const checked = checkStorage(next, vmId, accountId, 443);
+    assert.equal(checked.value?.allowed, true, checked.value?.summary);
+    assert.match(checked.value?.summary ?? "", /pe-peer/);
+    assert.match(checked.trace.map((line) => line.detail ?? "").join("\n"), /does not override/);
   });
 
   it("follows a second appliance, then stops on a loop or the eighth hop", () => {

@@ -47,6 +47,7 @@ export {
   setIpForwarding,
   setServiceEndpoint,
   setStorageFirewall,
+  addStoragePrivateEndpoint,
   setPower,
   setSubscriptionState,
   unregisterProvider,

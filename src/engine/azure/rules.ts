@@ -262,6 +262,7 @@ export function referencedIds(resource: Resource): string[] {
     ...stringsOf(props.applicationSecurityGroupIds),
     ...stringsOf(props.nicIds),
     ...stringsOf(props.remoteVirtualNetworkId),
+    ...stringsOf(props.privateLinkServiceId),
   ];
   if (resource.managedBy) ids.push(resource.managedBy);
   ids.push(...idOf(props.networkSecurityGroup));

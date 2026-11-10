@@ -28,7 +28,9 @@
  * these checks. An address does not consult power state. Microsoft.Storage on the
  * source subnet sends that storage traffic to a service endpoint route, which a
  * user route does not override. The storage firewall is checked after the network
- * path allows it.
+ * path allows it. An approved blob private endpoint in this virtual network, or a
+ * directly peered one, is used instead. Network policies stay disabled, so a
+ * user route does not override that private address.
  * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, 2.6, and 2.7.
  */
 
@@ -232,6 +234,8 @@ export function checkStorage(world: World, vmId: string, accountId: string, port
   if (isResult(opened)) return opened;
   const { trace, vm, nic, subnet } = opened;
   trace.push({ step: "validate", ok: true, detail: `${vm.name} uses ${nic.name}. Destination ${account.name}, port ${port}.` });
+  const endpoint = blobPrivateEndpoint(world, subnet, account.id);
+  if (endpoint) return privateStoragePath(world, trace, nic, subnet, account, endpoint, port);
   const nicNsg = attachedNsg(world, nic);
   const subnetNsg = attachedNsg(world, subnet);
   if (!nicNsg) trace.push({ step: "apply", ok: true, detail: `No network security group on ${nic.name}. No NSG at this layer.` });
@@ -296,6 +300,81 @@ function storageRegionCovered(vnetLocation: string, accountLocation: string): bo
   if (vnet === account) return true;
   const pair: Record<string, string> = { southeastasia: "eastasia", eastasia: "southeastasia" };
   return pair[vnet] === account;
+}
+
+function privateStoragePath(
+  world: World,
+  trace: TraceLine[],
+  nic: Resource,
+  subnet: Resource,
+  account: Resource,
+  endpoint: { resource: Resource; ip: string; subnet: Resource },
+  port: number,
+): Result<InboundCheck> {
+  const nicNsg = attachedNsg(world, nic);
+  const subnetNsg = attachedNsg(world, subnet);
+  if (!nicNsg) trace.push({ step: "apply", ok: true, detail: `No network security group on ${nic.name}. No NSG at this layer.` });
+  else {
+    const matched = firstMatch(nicNsg, port, "outbound", "vnet");
+    trace.push({ step: "apply", ok: true, detail: `${nic.name} uses ${nicNsg.name}. ${ruleLine(matched)}` });
+    if (matched.access === "Deny") {
+      trace.push({ step: "apply", ok: true, detail: "The private endpoint route is not consulted." });
+      return answered(trace, false, verdict(matched), LEARN.nsgOverview);
+    }
+  }
+  if (!subnetNsg) trace.push({ step: "apply", ok: true, detail: `No network security group on ${subnet.name}. No NSG at this layer.` });
+  else {
+    const matched = firstMatch(subnetNsg, port, "outbound", "vnet");
+    trace.push({ step: "apply", ok: true, detail: `${subnet.name} uses ${subnetNsg.name}. ${ruleLine(matched)}` });
+    if (matched.access === "Deny") {
+      trace.push({ step: "apply", ok: true, detail: "The private endpoint route is not consulted." });
+      return answered(trace, false, verdict(matched), LEARN.nsgOverview);
+    }
+  }
+  trace.push({
+    step: "apply",
+    ok: true,
+    detail: `${endpoint.resource.name} uses ${endpoint.ip} in ${endpoint.subnet.name}. The connection is Approved. Creating a private endpoint does not turn off the public endpoint. This check uses the private address.`,
+  });
+  trace.push({
+    step: "apply",
+    ok: true,
+    detail: `Network policies are disabled on ${endpoint.subnet.name}, so a user route does not override ${endpoint.ip}.`,
+  });
+  trace.push({ step: "apply", ok: true, detail: "network policies disabled on subnet, NSG not applied to the private endpoint" });
+  trace.push({ step: "apply", ok: true, detail: "The storage firewall is not consulted." });
+  return answered(trace, true, `${account.name} is reachable at ${endpoint.ip} through ${endpoint.resource.name}. The connection is Approved.`, LEARN.privateEndpoint);
+}
+
+function blobPrivateEndpoint(world: World, sourceSubnet: Resource, accountId: string): { resource: Resource; ip: string; subnet: Resource } | null {
+  const sourceVnet = parentVirtualNetwork(world, sourceSubnet);
+  if (!sourceVnet) return null;
+  const matches: { resource: Resource; ip: string; subnet: Resource; same: boolean }[] = [];
+  for (const resource of Object.values(world.resources)) {
+    if (resource.type.toLowerCase() !== "microsoft.network/privateendpoints") continue;
+    const target = resource.properties.privateLinkServiceId;
+    if (typeof target !== "string" || canonicalId(target) !== canonicalId(accountId)) continue;
+    const groups = resource.properties.groupIds;
+    if (!Array.isArray(groups) || !groups.includes("blob")) continue;
+    const state = resource.properties.privateLinkServiceConnectionState;
+    const status = state && typeof state === "object" && typeof (state as { status?: unknown }).status === "string" ? (state as { status: string }).status : "Approved";
+    if (status !== "Approved") continue;
+    const ip = resource.properties.privateIPAddress;
+    const subnetId = resource.properties.subnetId;
+    if (typeof ip !== "string" || typeof subnetId !== "string") continue;
+    const home = world.resources[canonicalId(subnetId)];
+    if (!home) continue;
+    const vnet = parentVirtualNetwork(world, home);
+    if (!vnet) continue;
+    const same = canonicalId(vnet.id) === canonicalId(sourceVnet.id);
+    const local = peeringLink(world, sourceVnet, vnet);
+    const remote = peeringLink(world, vnet, sourceVnet);
+    if (!same && (peeringState(local) !== "Connected" || peeringState(remote) !== "Connected")) continue;
+    matches.push({ resource, ip, subnet: home, same });
+  }
+  matches.sort((left, right) => Number(right.same) - Number(left.same) || left.resource.name.localeCompare(right.resource.name));
+  const chosen = matches[0];
+  return chosen ? { resource: chosen.resource, ip: chosen.ip, subnet: chosen.subnet } : null;
 }
 
 function storageFirewall(trace: TraceLine[], account: Resource, subnet: Resource): Result<InboundCheck> {

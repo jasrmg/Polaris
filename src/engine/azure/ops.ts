@@ -1201,6 +1201,61 @@ export function setPeeringOptions(
   }, { policy: subjectFromResource(localLink) });
 }
 
+export function addStoragePrivateEndpoint(world: World, accountId: string, subnetId: string, name: string): Result<World> {
+  const account = world.resources[canonicalId(accountId)];
+  const subnet = world.resources[canonicalId(subnetId)];
+  if (!account || !isType(account, "microsoft.storage/storageaccounts")) {
+    return failure([{ step: "parse", ok: true }], missing("storage account", accountId, LEARN.privateEndpoint));
+  }
+  if (!subnet || !isType(subnet, "microsoft.network/virtualnetworks/subnets")) {
+    return failure([{ step: "parse", ok: true }], missing("subnet", subnetId, LEARN.subnet));
+  }
+  const marker = "/subnets/";
+  const at = subnet.id.toLowerCase().lastIndexOf(marker);
+  const vnet = at >= 0 ? world.resources[canonicalId(subnet.id.slice(0, at))] : undefined;
+  if (!vnet) return failure([{ step: "parse", ok: true }], missing("virtual network", subnet.id, LEARN.vnet));
+  const duplicate = Object.values(world.resources).find((resource) => {
+    if (!isType(resource, "microsoft.network/privateendpoints")) return false;
+    const target = resource.properties.privateLinkServiceId;
+    const groups = resource.properties.groupIds;
+    return typeof target === "string" && canonicalId(target) === canonicalId(account.id) && Array.isArray(groups) && groups.includes("blob");
+  });
+  if (duplicate) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "ResourceAlreadyExists",
+      message: `${account.name} already has a blob private endpoint. (sandbox wording)`,
+      step: "validate",
+      learnUrl: LEARN.privateEndpoint,
+      target: duplicate.name,
+      next: "Delete that private endpoint before adding another for blob.",
+    });
+  }
+  const address = nextPrivateIp(world, subnet);
+  if (!address) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "SubnetFull",
+      message: `${subnet.name} has no address left. Azure reserves the first four addresses and the last address in a subnet.`,
+      step: "validate",
+      learnUrl: LEARN.privateIp,
+      next: "Use a larger subnet, or delete a network interface or private endpoint in this subnet.",
+    });
+  }
+  return createResource(world, {
+    armType: "Microsoft.Network/privateEndpoints",
+    name,
+    resourceGroup: account.resourceGroup,
+    location: vnet.location,
+    properties: {
+      subnetId: subnet.id,
+      privateIPAddress: address,
+      privateLinkServiceId: account.id,
+      groupIds: ["blob"],
+      privateLinkServiceConnectionState: { status: "Approved" },
+      provisioningState: "Succeeded",
+    },
+  });
+}
+
 export function setServiceEndpoint(world: World, subnetId: string, service: "Microsoft.Storage" | "None"): Result<World> {
   const existing = world.resources[canonicalId(subnetId)];
   return gate(world, "PATCH", subnetId, "Microsoft.Network/virtualNetworks/subnets", (current) => {
@@ -2290,7 +2345,22 @@ function deleteBlocked(world: World, resource: Resource): EngineError | null {
   const mentions = (field: (other: Resource) => boolean) => refs.some(field);
 
   if (typeKey === "microsoft.network/virtualnetworks/subnets" && mentions((other) => referencedIds(other).some((ref) => canonicalId(ref) === id))) {
-    return quote("You can delete a subnet only if there are no resources in the subnet.", LEARN.subnet, "Delete the network interface in this subnet first. If a virtual machine uses that interface, delete the virtual machine first.");
+    const users = refs.filter((other) => referencedIds(other).some((ref) => canonicalId(ref) === id));
+    const endpoint = users.some((other) => other.type.toLowerCase() === "microsoft.network/privateendpoints");
+    const nic = users.some((other) => other.type.toLowerCase() === "microsoft.network/networkinterfaces");
+    const next = endpoint && !nic
+      ? "Delete the private endpoint in this subnet first."
+      : "Delete the network interface in this subnet first. If a virtual machine uses that interface, delete the virtual machine first.";
+    return quote("You can delete a subnet only if there are no resources in the subnet.", LEARN.subnet, next);
+  }
+  if (typeKey === "microsoft.storage/storageaccounts" && mentions((other) => other.type.toLowerCase() === "microsoft.network/privateendpoints" && referencedIds(other).some((ref) => canonicalId(ref) === id))) {
+    return {
+      code: "DeleteBlocked",
+      message: `${resource.name} still has a private endpoint. (sandbox wording)`,
+      step: "validate",
+      learnUrl: LEARN.privateEndpoint,
+      next: "Delete the private endpoint, then delete the storage account.",
+    };
   }
   if (typeKey === "microsoft.network/virtualnetworks") {
     const subnetIds = new Set(

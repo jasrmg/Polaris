@@ -39,6 +39,13 @@ function privateIpsInSubnet(world: World, subnet: Resource | null): Map<string, 
     assigned.set(canonicalId(nic.id), stored);
     taken.add(stored);
   }
+  for (const endpoint of Object.values(world.resources)) {
+    if (endpoint.type.toLowerCase() !== "microsoft.network/privateendpoints") continue;
+    const home = typeof endpoint.properties.subnetId === "string" ? endpoint.properties.subnetId : "";
+    if (canonicalId(home) !== canonicalId(subnet.id)) continue;
+    const ip = endpoint.properties.privateIPAddress;
+    if (typeof ip === "string" && ip) taken.add(ip);
+  }
   for (const nic of nics) {
     if (assigned.has(canonicalId(nic.id))) continue;
     const address = nextFree(prefix, taken);
