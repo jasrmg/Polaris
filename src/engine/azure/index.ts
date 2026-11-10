@@ -34,6 +34,7 @@ export {
   deletePolicyAssignment,
   deleteRoleAssignment,
   addInboundRule,
+  addPrivateDnsRecord,
   addInternetRoute,
   addSecurityRule,
   associateNicSecurityGroup,

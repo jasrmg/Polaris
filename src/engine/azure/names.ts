@@ -142,6 +142,17 @@ function vnetLike(name: string, min: number, max: number, label: string): Engine
   return null;
 }
 
+function privateDnsRecordName(name: string): EngineError | null {
+  if (!/^[A-Za-z0-9]$/.test(name) && !/^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])$/.test(name)) {
+    return invalid(
+      "InvalidResourceName",
+      "An A record name is one label. It uses letters, numbers and hyphens, and it cannot start or end with a hyphen. (sandbox wording)",
+      name,
+    );
+  }
+  return null;
+}
+
 function dnsZoneName(name: string): EngineError | null {
   const sized = length(name, 1, 63, "A DNS zone name");
   if (sized) return sized;
@@ -241,6 +252,8 @@ const CHECKS: Record<string, (name: string, ctx: NameContext) => EngineError | n
   "microsoft.network/routetables": (name) => vnetLike(name, 1, 80, "A route table name"),
   "microsoft.network/dnszones": (name) => dnsZoneName(name),
   "microsoft.network/privatednszones": (name) => dnsZoneName(name),
+  "microsoft.network/privatednszones/virtualnetworklinks": (name) => vnetLike(name, 1, 80, "A virtual network link name"),
+  "microsoft.network/privatednszones/a": (name) => privateDnsRecordName(name),
   "microsoft.network/loadbalancers": (name) => vnetLike(name, 1, 80, "A load balancer name"),
   "microsoft.network/bastionhosts": (name) => vnetLike(name, 1, 80, "A Bastion name"),
   "microsoft.network/privateendpoints": (name) => vnetLike(name, 2, 64, "A private endpoint name"),

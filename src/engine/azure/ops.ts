@@ -51,6 +51,8 @@ import type { HttpMethod, ManagementGroup, PowerState, Resource, ResourceGroup, 
 const CHILD_PARENT: Record<string, string> = {
   "microsoft.network/virtualnetworks/subnets": "microsoft.network/virtualnetworks",
   "microsoft.network/virtualnetworks/virtualnetworkpeerings": "microsoft.network/virtualnetworks",
+  "microsoft.network/privatednszones/virtualnetworklinks": "microsoft.network/privatednszones",
+  "microsoft.network/privatednszones/a": "microsoft.network/privatednszones",
   "microsoft.storage/storageaccounts/blobservices/containers": "microsoft.storage/storageaccounts",
   "microsoft.storage/storageaccounts/fileservices/shares": "microsoft.storage/storageaccounts",
 };
@@ -1203,6 +1205,94 @@ export function setIpForwarding(world: World, nicId: string, enabled: boolean): 
   }, { policy: existing ? subjectFromResource(existing) : undefined });
 }
 
+export function addPrivateDnsRecord(
+  world: World,
+  vnetId: string,
+  input: { zoneName: string; recordName: string; ipv4Address: string },
+): Result<World> {
+  const vnet = world.resources[canonicalId(vnetId)];
+  if (!vnet || !isType(vnet, "microsoft.network/virtualnetworks")) {
+    return failure([{ step: "parse", ok: true }], missing("virtual network", vnetId, LEARN.vnet));
+  }
+  const ip = input.ipv4Address.trim();
+  const parsed = parseCidr(`${ip}/32`);
+  if ("error" in parsed || parsed.prefix !== 32) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "InvalidAddress",
+      message: "Enter an address such as 10.0.1.4. (sandbox wording)",
+      next: "The A record stores one IPv4 address.",
+      step: "validate",
+      learnUrl: LEARN.privateDns,
+    });
+  }
+  const zoneName = input.zoneName.trim();
+  let current = world;
+  let zone = privateZone(current, vnet, zoneName);
+  if (!zone) {
+    const created = createResource(current, {
+      armType: "Microsoft.Network/privateDnsZones",
+      name: zoneName,
+      resourceGroup: vnet.resourceGroup,
+      subscriptionId: vnet.subscriptionId,
+      location: "global",
+    });
+    if (!created.ok || !created.value) return created.ok ? failure([{ step: "parse", ok: true }], missing("private DNS zone", zoneName, LEARN.privateDns)) : created;
+    current = created.value;
+    zone = privateZone(current, vnet, zoneName);
+    if (!zone) return failure([{ step: "parse", ok: true }], missing("private DNS zone", zoneName, LEARN.privateDns));
+  }
+  if (!privateZoneLink(current, zone, vnet)) {
+    const linked = createResource(current, {
+      armType: "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+      name: `link-${vnet.name}`,
+      resourceGroup: vnet.resourceGroup,
+      subscriptionId: vnet.subscriptionId,
+      location: "global",
+      parentName: zone.name,
+      properties: {
+        registrationEnabled: false,
+        virtualNetwork: { id: vnet.id },
+      },
+    });
+    if (!linked.ok || !linked.value) return linked.ok ? failure([{ step: "parse", ok: true }], missing("virtual network link", vnet.name, LEARN.privateDns)) : linked;
+    current = linked.value;
+  }
+  return createResource(current, {
+    armType: "Microsoft.Network/privateDnsZones/A",
+    name: input.recordName.trim(),
+    resourceGroup: vnet.resourceGroup,
+    subscriptionId: vnet.subscriptionId,
+    location: "global",
+    parentName: zone.name,
+    properties: { ttl: 3600, aRecords: [{ ipv4Address: ip }] },
+  });
+}
+
+function privateZone(world: World, vnet: Resource, zoneName: string): Resource | undefined {
+  return Object.values(world.resources).find((resource) =>
+    isType(resource, "microsoft.network/privatednszones") &&
+    sameName(resource.name, zoneName) &&
+    resource.subscriptionId === vnet.subscriptionId &&
+    sameName(resource.resourceGroup, vnet.resourceGroup),
+  );
+}
+
+function privateZoneLink(world: World, zone: Resource, vnet: Resource): Resource | undefined {
+  const prefix = `${canonicalId(zone.id)}/virtualnetworklinks/`;
+  return Object.values(world.resources).find((resource) =>
+    isType(resource, "microsoft.network/privatednszones/virtualnetworklinks") &&
+    canonicalId(resource.id).startsWith(prefix) &&
+    canonicalId(linkedVnetId(resource) ?? "") === canonicalId(vnet.id),
+  );
+}
+
+function linkedVnetId(resource: Resource): string | null {
+  const network = resource.properties.virtualNetwork;
+  if (!network || typeof network !== "object") return null;
+  const id = (network as { id?: unknown }).id;
+  return typeof id === "string" ? id : null;
+}
+
 export function peerVirtualNetworks(world: World, localVnetId: string, remoteVnetId: string): Result<World> {
   const local = world.resources[canonicalId(localVnetId)];
   const remote = world.resources[canonicalId(remoteVnetId)];
@@ -1619,7 +1709,10 @@ export function powerIsBilled(state: PowerState): boolean {
 }
 
 function requiresGlobal(typeKey: string): boolean {
-  return typeKey === "microsoft.network/dnszones" || typeKey === "microsoft.network/privatednszones";
+  return typeKey === "microsoft.network/dnszones"
+    || typeKey === "microsoft.network/privatednszones"
+    || typeKey === "microsoft.network/privatednszones/virtualnetworklinks"
+    || typeKey === "microsoft.network/privatednszones/a";
 }
 
 function addressList(properties: Record<string, unknown>): string[] {

@@ -18,9 +18,12 @@
  * that interface's outbound security group and one route on its subnet, and
  * stops. If that subnet has no winning user route, the virtual network system
  * route can deliver the address. Traffic forwarded across a peering needs both
- * links to allow it. A second appliance is not followed. Azure-provided DNS
- * resolves a running virtual machine's name in this virtual network. A private
- * DNS zone is not part of these checks. An address does not consult power state.
+ * links to allow it. A second appliance is not followed. A private DNS zone
+ * linked to this virtual network is checked before Azure-provided DNS. A record
+ * there answers the name. No record in that zone ends the check. Azure-provided
+ * DNS still resolves a running virtual machine's name when no linked zone matches.
+ * Auto-registration and custom DNS are not part of these checks. An address does
+ * not consult power state.
  * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, 2.6, and 2.7.
  */
 
@@ -566,14 +569,10 @@ export function checkSameVirtualNetwork(world: World, vmId: string, address: str
     if (!vnet) {
       return answered(trace, false, `${subnet.name} is not in a virtual network. (sandbox wording)`, LEARN.vnet);
     }
-    const resolved = resolveAzureName(world, vnet, address);
+    const resolved = resolveDestinationName(world, vnet, address);
     if ("error" in resolved) return failure(trace, resolved.error);
     destination = resolved.address;
-    trace.push({
-      step: "validate",
-      ok: true,
-      detail: `${resolved.name} resolves to ${destination}. Azure-provided DNS, 168.63.129.16.`,
-    });
+    trace.push({ step: "validate", ok: true, detail: resolved.detail });
   }
   if (!vnet) {
     return answered(trace, false, `${subnet.name} is not in a virtual network. (sandbox wording)`, LEARN.vnet);
@@ -799,6 +798,80 @@ function ruleMatches(rule: Rule, port: number, flow: Flow, scope: Scope = "inter
 }
 
 const AZURE_DNS_SUFFIX = ".internal.cloudapp.net";
+
+function resolveDestinationName(
+  world: World,
+  sourceVnet: Resource,
+  query: string,
+): { address: string; detail: string } | { error: EngineError } {
+  const normalized = query.trim().toLowerCase().replace(/\.$/, "");
+  const fromZone = resolvePrivateZone(world, sourceVnet, normalized);
+  if (fromZone) return fromZone;
+  const azure = resolveAzureName(world, sourceVnet, query);
+  if ("error" in azure) return azure;
+  return {
+    address: azure.address,
+    detail: `${azure.name} resolves to ${azure.address}. Azure-provided DNS, 168.63.129.16.`,
+  };
+}
+
+function resolvePrivateZone(
+  world: World,
+  sourceVnet: Resource,
+  query: string,
+): { address: string; detail: string } | { error: EngineError } | null {
+  const zones = Object.values(world.resources)
+    .filter((resource) => resource.type.toLowerCase() === "microsoft.network/privatednszones" && zoneLinkedTo(world, resource, sourceVnet))
+    .filter((zone) => query === zone.name.toLowerCase() || query.endsWith(`.${zone.name.toLowerCase()}`))
+    .sort((left, right) => right.name.length - left.name.length || canonicalId(left.id).localeCompare(canonicalId(right.id)));
+  const zone = zones[0];
+  if (!zone) return null;
+  const zoneName = zone.name.toLowerCase();
+  const relative = query === zoneName ? "@" : query.slice(0, -(zoneName.length + 1));
+  const prefix = `${canonicalId(zone.id)}/a/`;
+  const record = Object.values(world.resources).find((resource) =>
+    resource.type.toLowerCase() === "microsoft.network/privatednszones/a" &&
+    canonicalId(resource.id).startsWith(prefix) &&
+    resource.name.toLowerCase() === relative,
+  );
+  const address = record ? recordAddress(record) : null;
+  if (!address) {
+    return {
+      error: {
+        code: "PrivateZoneNxDomain",
+        message: `Private DNS zone ${zone.name} has no record for this name, so the name did not resolve. (sandbox wording)`,
+        step: "validate",
+        learnUrl: LEARN.privateDns,
+        next: "Add an A record in that zone, or use a name the zone does not cover.",
+      },
+    };
+  }
+  return {
+    address,
+    detail: `${relative}.${zone.name} resolves to ${address}. Private DNS zone ${zone.name}, linked to ${sourceVnet.name}.`,
+  };
+}
+
+function zoneLinkedTo(world: World, zone: Resource, vnet: Resource): boolean {
+  const prefix = `${canonicalId(zone.id)}/virtualnetworklinks/`;
+  return Object.values(world.resources).some((resource) => {
+    if (resource.type.toLowerCase() !== "microsoft.network/privatednszones/virtualnetworklinks") return false;
+    if (!canonicalId(resource.id).startsWith(prefix)) return false;
+    const network = resource.properties.virtualNetwork;
+    if (!network || typeof network !== "object") return false;
+    const id = (network as { id?: unknown }).id;
+    return typeof id === "string" && canonicalId(id) === canonicalId(vnet.id);
+  });
+}
+
+function recordAddress(record: Resource): string | null {
+  const records = record.properties.aRecords;
+  if (!Array.isArray(records)) return null;
+  const first = records[0];
+  if (!first || typeof first !== "object") return null;
+  const address = (first as { ipv4Address?: unknown }).ipv4Address;
+  return typeof address === "string" ? address : null;
+}
 
 function resolveAzureName(world: World, sourceVnet: Resource, query: string): { address: string; name: string } | { error: EngineError } {
   const normalized = query.trim().toLowerCase().replace(/\.$/, "");

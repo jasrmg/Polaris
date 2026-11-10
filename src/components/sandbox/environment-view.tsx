@@ -86,6 +86,27 @@ function linkLines(resource: Resource, resources: Resource[], world: World): str
       const remoteGateway = peering.properties.useRemoteGateways === true ? "enabled" : "disabled";
       lines.push(`Peering ${peering.name} to ${remote}, ${state}. Allow forwarded traffic is ${forwarded}. Allow gateway transit is ${transit}. Use remote gateway is ${remoteGateway}.`);
     }
+    for (const zone of resources) {
+      if (!typeIs(zone, "microsoft.network/privatednszones")) continue;
+      const linkPrefix = `${zone.id.toLowerCase()}/virtualnetworklinks/`;
+      const linked = resources.some((item) => {
+        if (!item.id.toLowerCase().startsWith(linkPrefix)) return false;
+        const network = item.properties.virtualNetwork;
+        if (!network || typeof network !== "object") return false;
+        const id = (network as { id?: unknown }).id;
+        return typeof id === "string" && id.toLowerCase() === resource.id.toLowerCase();
+      });
+      if (!linked) continue;
+      const recordPrefix = `${zone.id.toLowerCase()}/a/`;
+      const records = resources.filter((item) => typeIs(item, "microsoft.network/privatednszones/a") && item.id.toLowerCase().startsWith(recordPrefix));
+      if (records.length === 0) lines.push(`Private DNS zone ${zone.name} is linked. Auto-registration is off.`);
+      for (const record of records) {
+        const rows = record.properties.aRecords;
+        const first = Array.isArray(rows) ? rows[0] : null;
+        const address = first && typeof first === "object" ? (first as { ipv4Address?: unknown }).ipv4Address : null;
+        if (typeof address === "string") lines.push(`Private DNS ${record.name}.${zone.name} is ${address}. Auto-registration is off.`);
+      }
+    }
   }
   const rules = resource.properties.securityRules;
   if (!Array.isArray(rules)) return lines;
@@ -270,6 +291,16 @@ export function EnvironmentView() {
       forwarded: data.get("forwarded") === "true",
       allowGatewayTransit: data.get("transit") === "true",
       useRemoteGateways: data.get("remoteGateway") === "true",
+    }));
+  }
+
+  function addDnsRecord(vnetId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    void run((engine, current) => engine.addPrivateDnsRecord(current, vnetId, {
+      zoneName: String(data.get("zoneName") ?? ""),
+      recordName: String(data.get("recordName") ?? ""),
+      ipv4Address: String(data.get("ipv4Address") ?? ""),
     }));
   }
 
@@ -505,7 +536,7 @@ export function EnvironmentView() {
                                   <Button type="submit" size="sm">Check</Button>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A virtual appliance route continues once, through the outbound security group on that interface and one route on its subnet. If that subnet has no winning user route, the virtual network system route can deliver the address. Traffic forwarded across a peering needs both links to allow it. A second appliance is not followed. Peering is not transitive. A name such as vm-web-01 resolves through Azure-provided DNS while that virtual machine is running in this virtual network. A name from another virtual network does not resolve. A private DNS zone is not part of this check. Power state is not part of a check that already has an address.
+                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A virtual appliance route continues once, through the outbound security group on that interface and one route on its subnet. If that subnet has no winning user route, the virtual network system route can deliver the address. Traffic forwarded across a peering needs both links to allow it. A second appliance is not followed. Peering is not transitive. A name such as vm-web-01 resolves through Azure-provided DNS while that virtual machine is running in this virtual network. A name from another virtual network does not resolve. A private DNS zone linked to this virtual network is checked first. A record there answers the name. If that zone has no record, the name does not resolve. A zone that is not linked is ignored. Auto-registration is not part of this check. Power state is not part of a check that already has an address.
                                 </p>
                                 {checks[`${resource.id}:vnet`] && (
                                   <div className="rounded-lg border p-3 text-sm">
@@ -606,6 +637,28 @@ export function EnvironmentView() {
                                 One TCP rule. Virtual network uses source and destination VirtualNetwork. Internet inbound is from Internet. Internet outbound is to Internet. Any source port. The same priority can be used once in each direction. This does not change which subnet or network interface uses the group.
                               </p>
                               <Button type="submit" size="sm" className="w-fit">Add rule</Button>
+                            </form>
+                          )}
+                          {isVnet && (
+                            <form className="mt-3 grid gap-2" onSubmit={(event) => addDnsRecord(resource.id, event)}>
+                              <div className="grid gap-2 sm:grid-cols-3">
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Zone name
+                                  <Input name="zoneName" defaultValue="contoso.internal" autoComplete="off" />
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  A record
+                                  <Input name="recordName" defaultValue="web" autoComplete="off" />
+                                </label>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  IPv4 address
+                                  <Input name="ipv4Address" defaultValue="10.0.1.4" autoComplete="off" />
+                                </label>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Creates the private DNS zone when it is missing, and links it to this virtual network for resolution only. Auto-registration stays off. A name in this zone is answered from the record. If the zone has no record, the name does not resolve, and Azure-provided DNS is not asked. A virtual network without this link does not see the zone.
+                              </p>
+                              <Button type="submit" size="sm" className="w-fit">Add A record</Button>
                             </form>
                           )}
                           {isVnet && (

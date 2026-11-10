@@ -32,6 +32,8 @@ export function namespaceOf(armType: string): string {
 const GLOBAL_LOCATION = new Set([
   "microsoft.network/dnszones",
   "microsoft.network/privatednszones",
+  "microsoft.network/privatednszones/virtualnetworklinks",
+  "microsoft.network/privatednszones/a",
 ]);
 
 export function requiresGlobalLocation(armType: string): boolean {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   addInboundRule,
+  addPrivateDnsRecord,
   addInternetRoute,
   addSecurityRule,
   peerVirtualNetworks,
@@ -916,6 +917,47 @@ describe("inbound internet check", () => {
     const zone = checkSameVirtualNetwork(world, vmId, "web.contoso.internal", 443);
     assert.equal(zone.error?.code, "NameNotFound");
     assert.match(zone.error?.message ?? "", /Azure-provided DNS only answers names in this virtual network/);
+  });
+
+  it("answers a private DNS record before Azure-provided DNS", () => {
+    const { world, vmId } = linkedWorld();
+    const seaId = Object.values(world.resources).find((resource) => resource.name === "vnet-sea")!.id;
+    const before = JSON.stringify(world);
+    const bad = addPrivateDnsRecord(world, seaId, { zoneName: "contoso.internal", recordName: "web", ipv4Address: "nope" });
+    assert.equal(bad.error?.code, "InvalidAddress");
+    assert.equal(JSON.stringify(world), before);
+
+    const recorded = must(addPrivateDnsRecord(world, seaId, { zoneName: "contoso.internal", recordName: "web", ipv4Address: "10.0.1.4" }));
+    const hit = checkSameVirtualNetwork(recorded, vmId, "Web.contoso.internal", 443);
+    assert.equal(hit.value?.allowed, true, hit.error?.message);
+    assert.match(hit.trace.map((line) => line.detail ?? "").join("\n"), /Private DNS zone contoso\.internal, linked to vnet-sea/);
+    const missing = checkSameVirtualNetwork(recorded, vmId, "app.contoso.internal", 443);
+    assert.equal(missing.error?.code, "PrivateZoneNxDomain");
+    assert.equal(missing.trace.some((line) => (line.detail ?? "").includes("168.63.129.16")), false);
+    const vmName = checkSameVirtualNetwork(recorded, vmId, "vm-web-01", 443);
+    assert.equal(vmName.value?.allowed, true, vmName.error?.message);
+
+    const again = addPrivateDnsRecord(recorded, seaId, { zoneName: "contoso.internal", recordName: "web", ipv4Address: "10.0.1.5" });
+    assert.equal(again.error?.code, "ResourceAlreadyExists");
+
+    const child = must(addPrivateDnsRecord(recorded, seaId, { zoneName: "web.contoso.internal", recordName: "other", ipv4Address: "10.0.1.4" }));
+    const longer = checkSameVirtualNetwork(child, vmId, "other.web.contoso.internal", 443);
+    assert.equal(longer.value?.allowed, true, longer.error?.message);
+    const covered = checkSameVirtualNetwork(child, vmId, "web.contoso.internal", 443);
+    assert.equal(covered.error?.code, "PrivateZoneNxDomain");
+    assert.match(covered.error?.message ?? "", /web\.contoso\.internal/);
+
+    const hub = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-hub",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.2.0.0/16"] } },
+    }));
+    const hubId = Object.values(hub.resources).find((resource) => resource.name === "vnet-hub")!.id;
+    const elsewhere = must(addPrivateDnsRecord(hub, hubId, { zoneName: "contoso.internal", recordName: "web", ipv4Address: "10.0.1.4" }));
+    const hidden = checkSameVirtualNetwork(elsewhere, vmId, "web.contoso.internal", 443);
+    assert.equal(hidden.error?.code, "NameNotFound");
   });
 
   it("denies virtual network traffic at the first group that matches", () => {
