@@ -14,6 +14,7 @@ import {
   setServiceEndpoint,
   setStorageFirewall,
   addStoragePrivateEndpoint,
+  addBlobPrivateDns,
   associateNicSecurityGroup,
   attachNetworkInterface,
   attachPublicIp,
@@ -773,7 +774,11 @@ describe("inbound internet check", () => {
     const endpoint = Object.values(withEndpoint.resources).find((resource) => resource.name === "pe-st-blob")!;
     assert.equal(endpoint.location, "southeastasia");
     assert.equal(endpoint.properties.privateIPAddress, "10.0.1.5");
-    const open = checkStorage(withEndpoint, vmId, accountId, 443);
+    const publicPath = checkStorage(withEndpoint, vmId, accountId, 443);
+    assert.match(publicPath.value?.summary ?? "", /Dropped\. routes\/drop-internet/);
+    assert.match(publicPath.trace.map((line) => line.detail ?? "").join("\n"), /not linked to vnet-sea/);
+    const published = must(addBlobPrivateDns(withEndpoint, accountId));
+    const open = checkStorage(published, vmId, accountId, 443);
     assert.equal(open.value?.allowed, true, open.error?.message);
     const openTrace = open.trace.map((line) => line.detail ?? "").join("\n");
     assert.match(openTrace, /10\.0\.1\.5/);
@@ -782,7 +787,7 @@ describe("inbound internet check", () => {
     assert.equal(openTrace.includes("drop-internet"), false);
     assert.equal(openTrace.toLowerCase().includes("storage firewall is not consulted"), true);
 
-    const specific = must(addInternetRoute(withEndpoint, subnetId, {
+    const specific = must(addInternetRoute(published, subnetId, {
       tableName: "rt-app",
       routeName: "drop-endpoint",
       nextHop: "None",
@@ -856,7 +861,14 @@ describe("inbound internet check", () => {
       addressPrefix: "0.0.0.0/0",
     }));
     next = must(addStoragePrivateEndpoint(next, accountId, hubSubnetId, "pe-peer"));
-    const checked = checkStorage(next, vmId, accountId, 443);
+    const hidden = checkStorage(next, vmId, accountId, 443);
+    assert.match(hidden.value?.summary ?? "", /Dropped\. routes\/drop-internet/);
+    assert.match(hidden.trace.map((line) => line.detail ?? "").join("\n"), /not linked to vnet-sea/);
+    const hubOnly = must(addBlobPrivateDns(next, accountId));
+    const stillHidden = checkStorage(hubOnly, vmId, accountId, 443);
+    assert.match(stillHidden.value?.summary ?? "", /Dropped\. routes\/drop-internet/);
+    const linked = must(addBlobPrivateDns(hubOnly, accountId, seaId));
+    const checked = checkStorage(linked, vmId, accountId, 443);
     assert.equal(checked.value?.allowed, true, checked.value?.summary);
     assert.match(checked.value?.summary ?? "", /pe-peer/);
     assert.match(checked.trace.map((line) => line.detail ?? "").join("\n"), /does not override/);

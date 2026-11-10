@@ -30,7 +30,10 @@
  * user route does not override. The storage firewall is checked after the network
  * path allows it. An approved blob private endpoint in this virtual network, or a
  * directly peered one, is used instead. Network policies stay disabled, so a
- * user route does not override that private address.
+ * user route does not override that private address. The private address is used
+ * only when privatelink.blob.core.windows.net is linked to the source virtual
+ * network and has an A record for the storage account. Otherwise the name
+ * resolves to the public address.
  * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, 2.6, and 2.7.
  */
 
@@ -234,8 +237,25 @@ export function checkStorage(world: World, vmId: string, accountId: string, port
   if (isResult(opened)) return opened;
   const { trace, vm, nic, subnet } = opened;
   trace.push({ step: "validate", ok: true, detail: `${vm.name} uses ${nic.name}. Destination ${account.name}, port ${port}.` });
+  const sourceVnet = parentVirtualNetwork(world, subnet);
   const endpoint = blobPrivateEndpoint(world, subnet, account.id);
-  if (endpoint) return privateStoragePath(world, trace, nic, subnet, account, endpoint, port);
+  const dns = sourceVnet ? blobZoneAnswer(world, sourceVnet, account.name) : null;
+  if (dns && "error" in dns) return failure(trace, dns.error);
+  if (dns && endpoint && dns.address === endpoint.ip && sourceVnet) {
+    trace.push({
+      step: "apply",
+      ok: true,
+      detail: `${account.name}.privatelink.blob.core.windows.net resolves to ${dns.address}. Private DNS zone privatelink.blob.core.windows.net, linked to ${sourceVnet.name}.`,
+    });
+    return privateStoragePath(world, trace, nic, subnet, account, endpoint, port);
+  }
+  if (endpoint && sourceVnet) {
+    trace.push({
+      step: "apply",
+      ok: true,
+      detail: `${account.name}.blob.core.windows.net resolves to the public address. privatelink.blob.core.windows.net is not linked to ${sourceVnet.name}.`,
+    });
+  }
   const nicNsg = attachedNsg(world, nic);
   const subnetNsg = attachedNsg(world, subnet);
   if (!nicNsg) trace.push({ step: "apply", ok: true, detail: `No network security group on ${nic.name}. No NSG at this layer.` });
@@ -344,6 +364,34 @@ function privateStoragePath(
   trace.push({ step: "apply", ok: true, detail: "network policies disabled on subnet, NSG not applied to the private endpoint" });
   trace.push({ step: "apply", ok: true, detail: "The storage firewall is not consulted." });
   return answered(trace, true, `${account.name} is reachable at ${endpoint.ip} through ${endpoint.resource.name}. The connection is Approved.`, LEARN.privateEndpoint);
+}
+
+function blobZoneAnswer(world: World, sourceVnet: Resource, accountName: string): { address: string } | { error: EngineError } | null {
+  const zone = Object.values(world.resources).find((resource) =>
+    resource.type.toLowerCase() === "microsoft.network/privatednszones" &&
+    resource.name.toLowerCase() === "privatelink.blob.core.windows.net" &&
+    zoneLinkedTo(world, resource, sourceVnet),
+  );
+  if (!zone) return null;
+  const prefix = `${canonicalId(zone.id)}/a/`;
+  const record = Object.values(world.resources).find((resource) =>
+    resource.type.toLowerCase() === "microsoft.network/privatednszones/a" &&
+    canonicalId(resource.id).startsWith(prefix) &&
+    resource.name.toLowerCase() === accountName.toLowerCase(),
+  );
+  const address = record ? recordAddress(record) : null;
+  if (!address) {
+    return {
+      error: {
+        code: "PrivateZoneNxDomain",
+        message: "Private DNS zone privatelink.blob.core.windows.net has no record for this name, so the name did not resolve. (sandbox wording)",
+        step: "validate",
+        learnUrl: LEARN.privateEndpointDns,
+        next: "Add the blob private DNS zone for this storage account.",
+      },
+    };
+  }
+  return { address };
 }
 
 function blobPrivateEndpoint(world: World, sourceSubnet: Resource, accountId: string): { resource: Resource; ip: string; subnet: Resource } | null {

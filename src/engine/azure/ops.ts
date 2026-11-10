@@ -1256,6 +1256,90 @@ export function addStoragePrivateEndpoint(world: World, accountId: string, subne
   });
 }
 
+const BLOB_PRIVATE_ZONE = "privatelink.blob.core.windows.net";
+
+export function addBlobPrivateDns(world: World, accountId: string, vnetId?: string): Result<World> {
+  const account = world.resources[canonicalId(accountId)];
+  if (!account || !isType(account, "microsoft.storage/storageaccounts")) {
+    return failure([{ step: "parse", ok: true }], missing("storage account", accountId, LEARN.privateEndpointDns));
+  }
+  const endpoint = Object.values(world.resources).find((resource) => {
+    if (!isType(resource, "microsoft.network/privateendpoints")) return false;
+    const target = resource.properties.privateLinkServiceId;
+    const groups = resource.properties.groupIds;
+    const state = resource.properties.privateLinkServiceConnectionState;
+    const status = state && typeof state === "object" && typeof (state as { status?: unknown }).status === "string" ? (state as { status: string }).status : "Approved";
+    return typeof target === "string" && canonicalId(target) === canonicalId(account.id) && Array.isArray(groups) && groups.includes("blob") && status === "Approved";
+  });
+  const ip = endpoint && typeof endpoint.properties.privateIPAddress === "string" ? endpoint.properties.privateIPAddress : "";
+  const subnetId = endpoint && typeof endpoint.properties.subnetId === "string" ? endpoint.properties.subnetId : "";
+  if (!endpoint || !ip || !subnetId) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "PrivateEndpointRequired",
+      message: "Add a blob private endpoint before the private DNS zone. (sandbox wording)",
+      step: "validate",
+      learnUrl: LEARN.privateEndpointDns,
+      next: "Add the private endpoint, then add the private DNS zone.",
+    });
+  }
+  const marker = "/subnets/";
+  const at = subnetId.toLowerCase().lastIndexOf(marker);
+  const endpointVnet = at >= 0 ? world.resources[canonicalId(subnetId.slice(0, at))] : undefined;
+  const vnet = vnetId ? world.resources[canonicalId(vnetId)] : endpointVnet;
+  if (!vnet || !isType(vnet, "microsoft.network/virtualnetworks")) {
+    return failure([{ step: "parse", ok: true }], missing("virtual network", vnetId ?? subnetId, LEARN.vnet));
+  }
+  const zone = Object.values(world.resources).find((resource) =>
+    isType(resource, "microsoft.network/privatednszones") && sameName(resource.name, BLOB_PRIVATE_ZONE) && resource.subscriptionId === vnet.subscriptionId,
+  );
+  if (!zone) {
+    return addPrivateDnsRecord(world, vnet.id, { zoneName: BLOB_PRIVATE_ZONE, recordName: account.name, ipv4Address: ip });
+  }
+  let current = world;
+  if (!privateZoneLink(current, zone, vnet)) {
+    const linked = createResource(current, {
+      armType: "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+      name: `link-${vnet.name}`,
+      resourceGroup: zone.resourceGroup,
+      subscriptionId: zone.subscriptionId,
+      location: "global",
+      parentName: zone.name,
+      properties: { registrationEnabled: false, virtualNetwork: { id: vnet.id } },
+    });
+    if (!linked.ok || !linked.value) return linked.ok ? failure([{ step: "parse", ok: true }], missing("virtual network link", vnet.name, LEARN.privateEndpointDns)) : linked;
+    current = linked.value;
+  }
+  const prefix = `${canonicalId(zone.id)}/a/`;
+  const record = Object.values(current.resources).find((resource) =>
+    isType(resource, "microsoft.network/privatednszones/a") && canonicalId(resource.id).startsWith(prefix) && sameName(resource.name, account.name),
+  );
+  if (!record) {
+    return createResource(current, {
+      armType: "Microsoft.Network/privateDnsZones/A",
+      name: account.name,
+      resourceGroup: zone.resourceGroup,
+      subscriptionId: zone.subscriptionId,
+      location: "global",
+      parentName: zone.name,
+      properties: { ttl: 3600, aRecords: [{ ipv4Address: ip }] },
+    });
+  }
+  const records = record.properties.aRecords;
+  const first = Array.isArray(records) ? records[0] : undefined;
+  const recorded = first && typeof first === "object" ? (first as { ipv4Address?: unknown }).ipv4Address : undefined;
+  if (recorded !== ip) {
+    return failure([{ step: "parse", ok: true }], {
+      code: "ResourceAlreadyExists",
+      message: `${account.name} already has an A record in ${BLOB_PRIVATE_ZONE}. (sandbox wording)`,
+      step: "validate",
+      learnUrl: LEARN.privateEndpointDns,
+      target: account.name,
+      next: "Delete that A record, then add the blob private DNS zone again.",
+    });
+  }
+  return success([{ step: "apply", ok: true, detail: `${BLOB_PRIVATE_ZONE} is linked to ${vnet.name}.` }], current);
+}
+
 export function setServiceEndpoint(world: World, subnetId: string, service: "Microsoft.Storage" | "None"): Result<World> {
   const existing = world.resources[canonicalId(subnetId)];
   return gate(world, "PATCH", subnetId, "Microsoft.Network/virtualNetworks/subnets", (current) => {

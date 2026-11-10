@@ -673,7 +673,7 @@ export function EnvironmentView() {
                                     <Button type="submit" size="sm">Check</Button>
                                   </div>
                                   <p className="text-xs text-muted-foreground">
-                                    TCP from this virtual machine to the storage account. The network interface is checked first. An approved blob private endpoint in this virtual network, or a virtual network peered with it, is used instead of the public path. Network policies stay disabled, so a user route does not override that private address. Without a private endpoint, Microsoft.Storage on this subnet uses a service endpoint route, and a user route does not override it. The service keeps its public address. The sandbox does not list the service prefixes. Microsoft.Storage covers this region and its pair. When the storage firewall default action is Deny, this subnet must be a virtual network rule. A service endpoint policy and a private DNS zone are not part of this check.
+                                    TCP from this virtual machine to the storage account. The network interface is checked first. An approved blob private endpoint is used when privatelink.blob.core.windows.net is linked to this virtual network and has an A record for the storage account. Otherwise the name resolves to the public address. Network policies stay disabled, so a user route does not override the private address. Without that private address, Microsoft.Storage on this subnet uses a service endpoint route, and a user route does not override it. The service keeps its public address. The sandbox does not list the service prefixes. Microsoft.Storage covers this region and its pair. When the storage firewall default action is Deny, this subnet must be a virtual network rule. A service endpoint policy is not part of this check.
                                   </p>
                                   {checks[`${resource.id}:storage`] && (
                                     <div className="rounded-lg border p-3 text-sm">
@@ -993,6 +993,7 @@ export function EnvironmentView() {
                             {allSubnets.length === 0 ? (
                               <p className="mt-3 text-sm text-muted-foreground">Create a subnet to add a private endpoint.</p>
                             ) : (
+                              <>
                               <form className="mt-3 grid gap-2" onSubmit={(event) => addBlobPrivateEndpoint(resource.id, event)}>
                                 <div className="grid gap-2 sm:grid-cols-2">
                                   <label className="grid min-w-0 gap-1 text-sm">
@@ -1007,10 +1008,19 @@ export function EnvironmentView() {
                                   </label>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  Blob only. The endpoint takes a private address from the subnet and the connection is Approved. This does not turn off the public endpoint. The storage check uses that private address when the endpoint is in the virtual machine virtual network or a virtual network peered with it. Network policies stay disabled, so a user route does not override the address, and the subnet network security group is not applied to the endpoint. A private DNS zone is not part of this check.
+                                  Blob only. The endpoint takes a private address from the subnet and the connection is Approved. This does not turn off the public endpoint. Network policies stay disabled, so a user route does not override the address, and the subnet network security group is not applied to the endpoint. The private DNS zone is a separate step.
                                 </p>
                                 <Button type="submit" size="sm" className="w-fit">Add private endpoint</Button>
                               </form>
+                              <div className="grid gap-2">
+                                <p className="text-xs text-muted-foreground">
+                                  Creates privatelink.blob.core.windows.net, links the private endpoint virtual network, and adds an A record for this storage account. The storage check uses the private address only when that zone is linked to the virtual machine virtual network. Otherwise the name resolves to the public address.
+                                </p>
+                                <Button type="button" size="sm" className="w-fit" onClick={() => void run((engine, current) => engine.addBlobPrivateDns(current, resource.id))}>
+                                  Add blob private DNS
+                                </Button>
+                              </div>
+                              </>
                             )}
                             </>
                           )}

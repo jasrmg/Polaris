@@ -48,6 +48,7 @@ export {
   setServiceEndpoint,
   setStorageFirewall,
   addStoragePrivateEndpoint,
+  addBlobPrivateDns,
   setPower,
   setSubscriptionState,
   unregisterProvider,
