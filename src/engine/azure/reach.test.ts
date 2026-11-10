@@ -473,8 +473,9 @@ describe("inbound internet check", () => {
 
     const enabled = must(setIpForwarding(routed, nvaId, true));
     const sent = checkOutboundInternet(enabled, vmId, 443);
-    assert.match(sent.value?.summary ?? "", /Sent to nic-nva\. routes\/via-nva, 0\.0\.0\.0\/0, next hop VirtualAppliance 10\.0\.2\.4/);
-    assert.match(sent.trace.map((line) => line.detail ?? "").join("\n"), /not part of this check/);
+    assert.equal(sent.value?.allowed, false);
+    assert.match(sent.value?.summary ?? "", /Stopped at nic-nva\. snet-nva has no user route that wins for 0\.0\.0\.0\/0/);
+    assert.match(sent.trace.map((line) => line.detail ?? "").join("\n"), /guest operating system is not part of this check/);
 
     const looped = must(addInternetRoute(world, subnetId, {
       tableName: "rt-loop",
@@ -569,6 +570,110 @@ describe("inbound internet check", () => {
     const peered = must(peerVirtualNetworks(beforePeer, seaId, hubId));
     const forwarded = checkSameVirtualNetwork(peered, vmId, "10.0.1.4", 443);
     assert.match(forwarded.value?.summary ?? "", /IP forwarding is disabled on nic-hub/);
+  });
+
+  it("uses the appliance security group and one route, then stops", () => {
+    const { world, vmId, subnetId } = linkedWorld();
+    const withSubnet = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks/subnets",
+      name: "snet-nva",
+      resourceGroup: "rg-demo",
+      parentName: "vnet-sea",
+      location: "southeastasia",
+      properties: { addressPrefix: "10.0.2.0/24" },
+    }));
+    const nvaSubnetId = Object.values(withSubnet.resources).find((resource) => resource.name === "snet-nva")!.id;
+    const withNic = must(createResource(withSubnet, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-nva",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      properties: { subnetId: nvaSubnetId, ipConfigurations: [{ name: "ipconfig1", properties: { subnet: { id: nvaSubnetId } } }] },
+    }));
+    const nvaId = Object.values(withNic.resources).find((resource) => resource.name === "nic-nva")!.id;
+    const enabled = must(setIpForwarding(withNic, nvaId, true));
+    const routed = must(addInternetRoute(enabled, subnetId, {
+      tableName: "rt-app",
+      routeName: "via-nva",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "0.0.0.0/0",
+      nextHopIpAddress: "10.0.2.4",
+    }));
+    const droppedWorld = must(addInternetRoute(routed, nvaSubnetId, {
+      tableName: "rt-nva",
+      routeName: "drop-internet",
+      nextHop: "None",
+      addressPrefix: "0.0.0.0/0",
+    }));
+    const dropped = checkOutboundInternet(droppedWorld, vmId, 443);
+    assert.equal(dropped.value?.allowed, false);
+    assert.match(dropped.value?.summary ?? "", /Dropped\. routes\/drop-internet, 0\.0\.0\.0\/0, next hop None/);
+
+    const internetWorld = must(addInternetRoute(routed, nvaSubnetId, {
+      tableName: "rt-nva-internet",
+      routeName: "leave",
+      nextHop: "Internet",
+      addressPrefix: "0.0.0.0/0",
+    }));
+    const sentInternet = checkOutboundInternet(internetWorld, vmId, 443);
+    assert.match(sentInternet.value?.summary ?? "", /Sent to the internet from nic-nva\. routes\/leave, 0\.0\.0\.0\/0, next hop Internet/);
+    assert.equal(sentInternet.value?.allowed, false);
+
+    const second = must(addInternetRoute(routed, nvaSubnetId, {
+      tableName: "rt-nva-next",
+      routeName: "via-next",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "0.0.0.0/0",
+      nextHopIpAddress: "10.0.1.4",
+    }));
+    const halted = checkOutboundInternet(second, vmId, 443);
+    assert.match(halted.value?.summary ?? "", /Stopped at nic-nva\. routes\/via-next, 0\.0\.0\.0\/0, next hop VirtualAppliance 10\.0\.1\.4\. A second appliance is not part of this check/);
+    assert.equal((halted.trace.map((line) => line.detail ?? "").join("\n")).includes("Routing loop"), false);
+
+    const nsg = must(createResource(droppedWorld, {
+      armType: "Microsoft.Network/networkSecurityGroups",
+      name: "nsg-nva",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+    }));
+    const nsgId = Object.values(nsg.resources).find((resource) => resource.name === "nsg-nva")!.id;
+    const ruled = must(addSecurityRule(nsg, nsgId, { direction: "Outbound", port: 443, access: "Deny", priority: 100 }));
+    const associated = must(associateNicSecurityGroup(ruled, nvaId, nsgId));
+    const denied = checkOutboundInternet(associated, vmId, 443);
+    assert.match(denied.value?.summary ?? "", /securityRules\/Deny-443-Outbound-100/);
+    const deniedTrace = denied.trace.map((line) => line.detail ?? "").join("\n");
+    assert.match(deniedTrace, /route on snet-nva is not consulted/);
+    assert.equal(deniedTrace.includes("drop-internet"), false);
+
+    const host = must(addInternetRoute(routed, subnetId, {
+      tableName: "rt-app",
+      routeName: "via-host",
+      nextHop: "VirtualAppliance",
+      addressPrefix: "10.0.1.4/32",
+      nextHopIpAddress: "10.0.2.4",
+    }));
+    const noRoute = checkSameVirtualNetwork(host, vmId, "10.0.1.4", 80);
+    assert.match(noRoute.value?.summary ?? "", /Stopped at nic-nva\. snet-nva has no user route that wins for 10\.0\.1\.4/);
+    assert.equal((noRoute.trace.map((line) => line.detail ?? "").join("\n")).includes("nic-web-01 has"), false);
+
+    const nvaDrop = must(addInternetRoute(host, nvaSubnetId, {
+      tableName: "rt-nva-host",
+      routeName: "drop-host",
+      nextHop: "None",
+      addressPrefix: "10.0.1.4/32",
+    }));
+    const privateDrop = checkSameVirtualNetwork(nvaDrop, vmId, "10.0.1.4", 80);
+    assert.match(privateDrop.value?.summary ?? "", /Dropped\. routes\/drop-host, 10\.0\.1\.4\/32, next hop None/);
+
+    const broad = must(addInternetRoute(host, nvaSubnetId, {
+      tableName: "rt-nva-broad",
+      routeName: "drop-all",
+      nextHop: "None",
+      addressPrefix: "0.0.0.0/0",
+    }));
+    const stillLocal = checkSameVirtualNetwork(broad, vmId, "10.0.1.4", 80);
+    assert.match(stillLocal.value?.summary ?? "", /no user route that wins for 10\.0\.1\.4/);
+    assert.equal((stillLocal.trace.map((line) => line.detail ?? "").join("\n")).includes("drop-all"), false);
   });
 
   it("allows a private address in the virtual network, and ignores an internet rule", () => {

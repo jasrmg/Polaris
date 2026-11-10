@@ -472,7 +472,7 @@ export function EnvironmentView() {
                               />
                               <CheckForm
                                 label="Outbound to the internet, destination port"
-                                note="A new TCP connection from the virtual machine to the internet. The network interface is checked first. An inbound rule does not decide this. A 0.0.0.0/0 route on the subnet is used after the security groups allow the traffic. A virtual appliance route stops at that network interface. Peering and DNS are not part of this check."
+                                note="A new TCP connection from the virtual machine to the internet. The network interface is checked first. An inbound rule does not decide this. A 0.0.0.0/0 route on the subnet is used after the security groups allow the traffic. A virtual appliance route continues once, through the outbound security group on that interface and one route on its subnet. A second appliance is not followed. Peering and DNS are not part of this check."
                                 result={checks[`${resource.id}:out`]}
                                 onSubmit={(event) => checkTraffic(resource.id, "out", event)}
                               />
@@ -489,7 +489,7 @@ export function EnvironmentView() {
                                   <Button type="submit" size="sm">Check</Button>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A virtual appliance route stops at that network interface. Peering is not transitive. DNS and power state are not part of this check.
+                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A virtual appliance route continues once, through the outbound security group on that interface and one route on its subnet. A second appliance is not followed. Peering is not transitive. DNS and power state are not part of this check.
                                 </p>
                                 {checks[`${resource.id}:vnet`] && (
                                   <div className="rounded-lg border p-3 text-sm">
@@ -673,7 +673,7 @@ export function EnvironmentView() {
                                 </label>
                               </div>
                               <p className="text-xs text-muted-foreground">
-                                One route. The longest matching prefix wins, and a prefix can sit inside another. 0.0.0.0/0 changes outbound internet traffic after the security groups allow it. A longer prefix can decide an address inside the virtual network. None drops that traffic. Internet sends it to the internet. Virtual appliance sends it to a private address in a different subnet, and the check stops at that network interface. A subnet can have one route table.
+                                One route. The longest matching prefix wins, and a prefix can sit inside another. 0.0.0.0/0 changes outbound internet traffic after the security groups allow it. A longer prefix can decide an address inside the virtual network. None drops that traffic. Internet sends it to the internet. Virtual appliance sends it to a private address in a different subnet. The check then uses that interface once and stops. A subnet can have one route table.
                               </p>
                               <Button type="submit" size="sm" className="w-fit">Add route</Button>
                             </form>
