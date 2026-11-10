@@ -28,6 +28,7 @@ export const LEARN = {
   vnet: "https://learn.microsoft.com/en-us/azure/virtual-network/manage-virtual-network",
   nic: "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-network-interface",
   peering: "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-manage-peering",
+  vmDns: "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-networks-name-resolution-for-vms-and-role-instances",
   rgPortal: "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/manage-resource-groups-portal",
   rgGet: "https://learn.microsoft.com/en-us/rest/api/resources/resource-groups/get",
   rgFaq: "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/frequently-asked-questions",

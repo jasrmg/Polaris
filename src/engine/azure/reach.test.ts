@@ -7,6 +7,7 @@ import {
   peerVirtualNetworks,
   setForwardedTraffic,
   setPeeringOptions,
+  setPower,
   setIpForwarding,
   associateNicSecurityGroup,
   attachNetworkInterface,
@@ -857,8 +858,64 @@ describe("inbound internet check", () => {
     assert.equal(gap.error?.code, "AddressOutsideSubnet");
     assert.match(gap.error?.next ?? "", /10\.0\.1\.0\/24/);
     const bad = checkSameVirtualNetwork(world, vmId, "nope", 443);
-    assert.equal(bad.error?.code, "InvalidAddress");
+    assert.equal(bad.error?.code, "NameNotFound");
+    const malformed = checkSameVirtualNetwork(world, vmId, "-bad", 443);
+    assert.equal(malformed.error?.code, "InvalidAddress");
     assert.equal(JSON.stringify(world), before);
+  });
+
+  it("resolves a virtual machine name in this virtual network", () => {
+    const { world, vmId } = linkedWorld();
+    const byName = checkSameVirtualNetwork(world, vmId, "vm-web-01", 443);
+    assert.equal(byName.value?.allowed, true, byName.error?.message);
+    assert.match(byName.trace.map((line) => line.detail ?? "").join("\n"), /vm-web-01\.internal\.cloudapp\.net resolves to 10\.0\.1\.4/);
+    const byFqdn = checkSameVirtualNetwork(world, vmId, "VM-WEB-01.internal.cloudapp.net", 443);
+    assert.equal(byFqdn.value?.allowed, true, byFqdn.error?.message);
+
+    const stopped = must(setPower(world, vmId, "deallocate"));
+    const down = checkSameVirtualNetwork(stopped, vmId, "vm-web-01", 443);
+    assert.equal(down.error?.code, "VmNotRunning");
+
+    const hub = must(createResource(world, {
+      armType: "Microsoft.Network/virtualNetworks",
+      name: "vnet-hub",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      properties: { addressSpace: { addressPrefixes: ["10.2.0.0/16"] } },
+    }));
+    const hubId = Object.values(hub.resources).find((resource) => resource.name === "vnet-hub")!.id;
+    const withSubnet = must(createResource(hub, {
+      armType: "Microsoft.Network/virtualNetworks/subnets",
+      name: "snet-hub",
+      resourceGroup: "rg-demo",
+      parentName: "vnet-hub",
+      location: "eastasia",
+      properties: { addressPrefix: "10.2.0.0/24" },
+    }));
+    const hubSubnetId = Object.values(withSubnet.resources).find((resource) => resource.name === "snet-hub")!.id;
+    const withNic = must(createResource(withSubnet, {
+      armType: "Microsoft.Network/networkInterfaces",
+      name: "nic-hub",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      properties: { subnetId: hubSubnetId, ipConfigurations: [{ name: "ipconfig1", properties: { subnet: { id: hubSubnetId } } }] },
+    }));
+    const hubNicId = Object.values(withNic.resources).find((resource) => resource.name === "nic-hub")!.id;
+    const withVm = must(createResource(withNic, {
+      armType: "Microsoft.Compute/virtualMachines",
+      name: "vm-hub",
+      resourceGroup: "rg-demo",
+      location: "eastasia",
+      properties: { nicIds: [hubNicId] },
+    }));
+    const seaId = Object.values(world.resources).find((resource) => resource.name === "vnet-sea")!.id;
+    const peered = must(peerVirtualNetworks(withVm, seaId, hubId));
+    const other = checkSameVirtualNetwork(peered, vmId, "vm-hub", 443);
+    assert.equal(other.error?.code, "NameOutsideVnet");
+    assert.match(other.error?.message ?? "", /can't be resolved from other virtual networks/);
+    const zone = checkSameVirtualNetwork(world, vmId, "web.contoso.internal", 443);
+    assert.equal(zone.error?.code, "NameNotFound");
+    assert.match(zone.error?.message ?? "", /Azure-provided DNS only answers names in this virtual network/);
   });
 
   it("denies virtual network traffic at the first group that matches", () => {

@@ -495,7 +495,7 @@ export function EnvironmentView() {
                               <form className="grid gap-2" onSubmit={(event) => checkVnet(resource.id, event)}>
                                 <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_auto] sm:items-end">
                                   <label className="grid min-w-0 gap-1 text-sm">
-                                    To an address in this virtual network
+                                    To an address or name in this virtual network
                                     <Input name="address" defaultValue="10.0.1.4" autoComplete="off" />
                                   </label>
                                   <label className="grid min-w-0 gap-1 text-sm">
@@ -505,7 +505,7 @@ export function EnvironmentView() {
                                   <Button type="submit" size="sm">Check</Button>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A virtual appliance route continues once, through the outbound security group on that interface and one route on its subnet. If that subnet has no winning user route, the virtual network system route can deliver the address. Traffic forwarded across a peering needs both links to allow it. A second appliance is not followed. Peering is not transitive. DNS and power state are not part of this check.
+                                  A new TCP connection to an address in this virtual network, or in a virtual network peered directly with it. Both peering links have to be Connected. The way out is checked first. The longest matching route is used after the security groups allow the traffic. A virtual appliance route continues once, through the outbound security group on that interface and one route on its subnet. If that subnet has no winning user route, the virtual network system route can deliver the address. Traffic forwarded across a peering needs both links to allow it. A second appliance is not followed. Peering is not transitive. A name such as vm-web-01 resolves through Azure-provided DNS while that virtual machine is running in this virtual network. A name from another virtual network does not resolve. A private DNS zone is not part of this check. Power state is not part of a check that already has an address.
                                 </p>
                                 {checks[`${resource.id}:vnet`] && (
                                   <div className="rounded-lg border p-3 text-sm">

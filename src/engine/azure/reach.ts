@@ -18,12 +18,13 @@
  * that interface's outbound security group and one route on its subnet, and
  * stops. If that subnet has no winning user route, the virtual network system
  * route can deliver the address. Traffic forwarded across a peering needs both
- * links to allow it. A second appliance is not followed. DNS and power state
- * are not part of these checks.
+ * links to allow it. A second appliance is not followed. Azure-provided DNS
+ * resolves a running virtual machine's name in this virtual network. A private
+ * DNS zone is not part of these checks. An address does not consult power state.
  * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, 2.6, and 2.7.
  */
 
-import { failure, success, type Result, type TraceLine } from "../core/result";
+import { failure, success, type EngineError, type Result, type TraceLine } from "../core/result";
 import { assignedPrivateIp } from "./addresses";
 import { containsCidr, parseCidr } from "./cidr";
 import { canonicalId } from "./ids";
@@ -559,17 +560,21 @@ export function checkSameVirtualNetwork(world: World, vmId: string, address: str
   const opened = openPath(world, vmId, port, "TCP to an address in the same virtual network.");
   if (isResult(opened)) return opened;
   const { trace, vm, nic, subnet } = opened;
-  const destination = parseHost(address);
+  const vnet = parentVirtualNetwork(world, subnet);
+  let destination = parseHost(address);
   if (!destination) {
-    return failure(trace, {
-      code: "InvalidAddress",
-      message: "Record one IPv4 address. (sandbox wording)",
+    if (!vnet) {
+      return answered(trace, false, `${subnet.name} is not in a virtual network. (sandbox wording)`, LEARN.vnet);
+    }
+    const resolved = resolveAzureName(world, vnet, address);
+    if ("error" in resolved) return failure(trace, resolved.error);
+    destination = resolved.address;
+    trace.push({
       step: "validate",
-      learnUrl: LEARN.vnet,
-      next: "Enter an address such as 10.0.1.4.",
+      ok: true,
+      detail: `${resolved.name} resolves to ${destination}. Azure-provided DNS, 168.63.129.16.`,
     });
   }
-  const vnet = parentVirtualNetwork(world, subnet);
   if (!vnet) {
     return answered(trace, false, `${subnet.name} is not in a virtual network. (sandbox wording)`, LEARN.vnet);
   }
@@ -791,6 +796,96 @@ function ruleMatches(rule: Rule, port: number, flow: Flow, scope: Scope = "inter
   if (!sourceOk || !destinationOk) return false;
   if (!portSpecMatches(rule.sourcePorts, null)) return false;
   return portSpecMatches(rule.destinationPorts, port);
+}
+
+const AZURE_DNS_SUFFIX = ".internal.cloudapp.net";
+
+function resolveAzureName(world: World, sourceVnet: Resource, query: string): { address: string; name: string } | { error: EngineError } {
+  const normalized = query.trim().toLowerCase().replace(/\.$/, "");
+  if (!isAzureDnsQuery(normalized)) {
+    return {
+      error: {
+        code: "InvalidAddress",
+        message: "Record one IPv4 address, or a virtual machine name in this virtual network. (sandbox wording)",
+        step: "validate",
+        learnUrl: LEARN.vmDns,
+        next: "Enter an address such as 10.0.1.4, or a name such as vm-web-01.",
+      },
+    };
+  }
+  const short = normalized.endsWith(AZURE_DNS_SUFFIX) ? normalized.slice(0, -AZURE_DNS_SUFFIX.length) : normalized;
+  if (short.includes(".")) {
+    return {
+      error: {
+        code: "NameNotFound",
+        message: "The name did not resolve. Azure-provided DNS only answers names in this virtual network. (sandbox wording)",
+        step: "validate",
+        learnUrl: LEARN.vmDns,
+        next: "Enter a virtual machine name in this virtual network, such as vm-web-01.",
+      },
+    };
+  }
+  let sawOtherVnet = false;
+  for (const resource of Object.values(world.resources)) {
+    if (resource.type.toLowerCase() !== "microsoft.compute/virtualmachines" || resource.name.toLowerCase() !== short) continue;
+    const nicId = firstId(resource.properties.nicIds) ?? profileNicId(resource);
+    const nic = nicId ? world.resources[canonicalId(nicId)] : undefined;
+    const subnetId = nic ? firstId(nic.properties.subnetId) ?? ipConfigId(nic, "subnetId", "subnet") : null;
+    const subnet = subnetId ? world.resources[canonicalId(subnetId)] : undefined;
+    const nicVnet = subnet ? parentVirtualNetwork(world, subnet) : undefined;
+    if (!nic || !nicVnet) continue;
+    if (canonicalId(nicVnet.id) !== canonicalId(sourceVnet.id)) {
+      sawOtherVnet = true;
+      continue;
+    }
+    const power = typeof resource.properties.powerState === "string" ? resource.properties.powerState : "";
+    if (power !== "Running") {
+      return {
+        error: {
+          code: "VmNotRunning",
+          message: `${resource.name} is ${power || "not running"}. Azure-provided DNS returns its address only while the virtual machine is running. (sandbox wording)`,
+          step: "validate",
+          learnUrl: LEARN.vmDns,
+          next: "Start the virtual machine, then check the name again.",
+        },
+      };
+    }
+    const address = assignedPrivateIp(world, nic);
+    if (!address) continue;
+    return { address, name: `${resource.name}.internal.cloudapp.net` };
+  }
+  if (sawOtherVnet) {
+    return {
+      error: {
+        code: "NameOutsideVnet",
+        message: "DNS names created for one virtual network can't be resolved from other virtual networks.",
+        step: "validate",
+        learnUrl: LEARN.vmDns,
+        next: "Enter a name from this virtual network, or enter the private address.",
+      },
+    };
+  }
+  return {
+    error: {
+      code: "NameNotFound",
+      message: "The name did not resolve. (sandbox wording)",
+      step: "validate",
+      learnUrl: LEARN.vmDns,
+      next: "Enter a virtual machine name in this virtual network, such as vm-web-01.",
+    },
+  };
+}
+
+function isDnsLabel(value: string): boolean {
+  return /^[a-z0-9]$/.test(value) || /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])$/.test(value);
+}
+
+function isAzureDnsQuery(value: string): boolean {
+  if (!value || value.length > 253) return false;
+  const name = value.endsWith(AZURE_DNS_SUFFIX) ? value.slice(0, -AZURE_DNS_SUFFIX.length) : value;
+  if (!name) return false;
+  if (value.endsWith(AZURE_DNS_SUFFIX)) return isDnsLabel(name);
+  return name.split(".").every(isDnsLabel);
 }
 
 function parseHost(value: string): string | null {
