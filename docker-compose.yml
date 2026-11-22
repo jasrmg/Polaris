@@ -1,0 +1,7 @@
+services:
+  polaris:
+    build: .
+    image: polaris:local
+    ports:
+      - "8080:80"
+    restart: unless-stopped

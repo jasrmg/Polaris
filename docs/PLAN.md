@@ -28,6 +28,7 @@ Living document. **If you are an AI or a person picking this project up cold, re
 
 ```bash
 npm run dev                                  # dev server (http://localhost:3000)
+docker compose up --build                    # static export in nginx (http://localhost:8080)
 BICEP_PATH=/path/to/bicep npm run check:snippets   # compile every Bicep example, parse every ARM example
 npm run lint
 npx tsc --noEmit

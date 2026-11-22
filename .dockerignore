@@ -1,0 +1,14 @@
+.git
+.github
+.cursor
+.next
+out
+node_modules
+coverage
+data
+docs
+*.md
+.env*
+npm-debug.log*
+.DS_Store
+*.tsbuildinfo

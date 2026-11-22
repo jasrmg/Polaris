@@ -26,6 +26,16 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
+### Docker
+
+The image builds the static export and serves it with nginx. The container does not talk to Azure. Sandbox state stays in the browser.
+
+```bash
+docker compose up --build
+```
+
+Open http://localhost:8080. `npm run dev` can keep using port 3000.
+
 ## Checks
 
 Run these before committing. The first one needs the Bicep CLI.
