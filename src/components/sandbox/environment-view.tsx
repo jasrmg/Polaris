@@ -27,6 +27,10 @@ const healthyBadge = "border-transparent bg-emerald-600/15 text-emerald-800 dark
 const selectClass =
   "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
+function storageService(value: FormDataEntryValue | null): "blob" | "file" | "queue" | "table" {
+  return value === "file" || value === "queue" || value === "table" ? value : "blob";
+}
+
 function typeIs(resource: Resource, typeKey: string): boolean {
   return resource.type.toLowerCase() === typeKey;
 }
@@ -157,7 +161,7 @@ function linkLines(resource: Resource, resources: Resource[], world: World): str
     const target = typeof resource.properties.privateLinkServiceId === "string" ? named(resources, resource.properties.privateLinkServiceId) : "storage";
     const ip = typeof resource.properties.privateIPAddress === "string" ? resource.properties.privateIPAddress : "an address";
     const groups = resource.properties.groupIds;
-    const label = Array.isArray(groups) && groups.includes("queue") ? "Queue" : Array.isArray(groups) && groups.includes("file") ? "File" : "Blob";
+    const label = Array.isArray(groups) && groups.includes("table") ? "Table" : Array.isArray(groups) && groups.includes("queue") ? "Queue" : Array.isArray(groups) && groups.includes("file") ? "File" : "Blob";
     lines.push(`${label} private endpoint for ${target} at ${ip}. Connection Approved.`);
   }
   const rules = resource.properties.securityRules;
@@ -381,15 +385,13 @@ export function EnvironmentView() {
   function addBlobPrivateEndpoint(accountId: string, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const chosen = data.get("service");
-    const service = chosen === "file" || chosen === "queue" ? chosen : "blob";
+    const service = storageService(data.get("service"));
     void run((engine, current) => engine.addStoragePrivateEndpoint(current, accountId, String(data.get("subnet") ?? ""), String(data.get("name") ?? ""), service));
   }
 
   function addPrivateDns(accountId: string, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const chosen = new FormData(event.currentTarget).get("service");
-    const service = chosen === "file" || chosen === "queue" ? chosen : "blob";
+    const service = storageService(new FormData(event.currentTarget).get("service"));
     void run((engine, current) => engine.addStoragePrivateDns(current, accountId, service));
   }
 
@@ -407,8 +409,7 @@ export function EnvironmentView() {
     event.preventDefault();
     if (!session.engine || !session.world) return;
     const data = new FormData(event.currentTarget);
-    const chosen = data.get("service");
-    const service = chosen === "file" || chosen === "queue" ? chosen : "blob";
+    const service = storageService(data.get("service"));
     const result = session.engine.checkStorage(session.world, vmId, String(data.get("account") ?? ""), Number(data.get("port")), service);
     if (!result.ok || !result.value) {
       setError(result.error ?? { code: "Failed", message: "The check could not run.", step: "validate" });
@@ -685,6 +686,7 @@ export function EnvironmentView() {
                                         <option value="blob">blob</option>
                                         <option value="file">file</option>
                                         <option value="queue">queue</option>
+                                        <option value="table">table</option>
                                       </select>
                                     </label>
                                     <label className="grid min-w-0 gap-1 text-sm">
@@ -694,7 +696,7 @@ export function EnvironmentView() {
                                     <Button type="submit" size="sm">Check</Button>
                                   </div>
                                   <p className="text-xs text-muted-foreground">
-                                    TCP from this virtual machine to the storage account. The network interface is checked first. Blob, file, and queue are separate. An approved private endpoint for the selected service is used when its private DNS zone is linked to this virtual network and has an A record for the storage account. Blob uses privatelink.blob.core.windows.net. File uses privatelink.file.core.windows.net. Queue uses privatelink.queue.core.windows.net. Otherwise the name resolves to the public address. Network policies stay disabled, so a user route does not override the private address. Without that private address, Microsoft.Storage on this subnet uses a service endpoint route, and a user route does not override it. The service keeps its public address. The sandbox does not list the service prefixes. Microsoft.Storage covers this region and its pair. When the storage firewall default action is Deny, this subnet must be a virtual network rule. A service endpoint policy is not part of this check.
+                                    TCP from this virtual machine to the storage account. The network interface is checked first. Blob, file, queue, and table are separate. An approved private endpoint for the selected service is used when its private DNS zone is linked to this virtual network and has an A record for the storage account. Blob uses privatelink.blob.core.windows.net. File uses privatelink.file.core.windows.net. Queue uses privatelink.queue.core.windows.net. Table uses privatelink.table.core.windows.net. Otherwise the name resolves to the public address. Network policies stay disabled, so a user route does not override the private address. Without that private address, Microsoft.Storage on this subnet uses a service endpoint route, and a user route does not override it. The service keeps its public address. The sandbox does not list the service prefixes. Microsoft.Storage covers this region and its pair. When the storage firewall default action is Deny, this subnet must be a virtual network rule. A service endpoint policy is not part of this check.
                                   </p>
                                   {checks[`${resource.id}:storage`] && (
                                     <div className="rounded-lg border p-3 text-sm">
@@ -1033,11 +1035,12 @@ export function EnvironmentView() {
                                       <option value="blob">blob</option>
                                       <option value="file">file</option>
                                       <option value="queue">queue</option>
+                                      <option value="table">table</option>
                                     </select>
                                   </label>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  Blob, file, and queue each need their own endpoint. The endpoint takes a private address from the subnet and the connection is Approved. This does not turn off the public endpoint. Network policies stay disabled, so a user route does not override the address, and the subnet network security group is not applied to the endpoint. The private DNS zone is a separate step.
+                                  Blob, file, queue, and table each need their own endpoint. The endpoint takes a private address from the subnet and the connection is Approved. This does not turn off the public endpoint. Network policies stay disabled, so a user route does not override the address, and the subnet network security group is not applied to the endpoint. The private DNS zone is a separate step.
                                 </p>
                                 <Button type="submit" size="sm" className="w-fit">Add private endpoint</Button>
                               </form>
@@ -1048,6 +1051,7 @@ export function EnvironmentView() {
                                     <option value="blob">blob · privatelink.blob.core.windows.net</option>
                                     <option value="file">file · privatelink.file.core.windows.net</option>
                                     <option value="queue">queue · privatelink.queue.core.windows.net</option>
+                                    <option value="table">table · privatelink.table.core.windows.net</option>
                                   </select>
                                 </label>
                                 <p className="text-xs text-muted-foreground">

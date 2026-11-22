@@ -1201,16 +1201,17 @@ export function setPeeringOptions(
   }, { policy: subjectFromResource(localLink) });
 }
 
-export type StorageSubresource = "blob" | "file" | "queue";
+export type StorageSubresource = "blob" | "file" | "queue" | "table";
 
 const STORAGE_PRIVATE: Record<StorageSubresource, { group: StorageSubresource; zone: string; label: string }> = {
   blob: { group: "blob", zone: "privatelink.blob.core.windows.net", label: "blob" },
   file: { group: "file", zone: "privatelink.file.core.windows.net", label: "file" },
   queue: { group: "queue", zone: "privatelink.queue.core.windows.net", label: "queue" },
+  table: { group: "table", zone: "privatelink.table.core.windows.net", label: "table" },
 };
 
 function storageSubresource(value: string | undefined): StorageSubresource {
-  return value === "file" || value === "queue" ? value : "blob";
+  return value === "file" || value === "queue" || value === "table" ? value : "blob";
 }
 
 export function addStoragePrivateEndpoint(world: World, accountId: string, subnetId: string, name: string, subresource: StorageSubresource = "blob"): Result<World> {

@@ -226,10 +226,11 @@ const STORAGE_PRIVATE_PATH = {
   blob: { group: "blob" as const, zone: "privatelink.blob.core.windows.net", host: "blob.core.windows.net", label: "blob" },
   file: { group: "file" as const, zone: "privatelink.file.core.windows.net", host: "file.core.windows.net", label: "file" },
   queue: { group: "queue" as const, zone: "privatelink.queue.core.windows.net", host: "queue.core.windows.net", label: "queue" },
+  table: { group: "table" as const, zone: "privatelink.table.core.windows.net", host: "table.core.windows.net", label: "table" },
 };
 
-export function checkStorage(world: World, vmId: string, accountId: string, port: number, subresource: "blob" | "file" | "queue" = "blob"): Result<InboundCheck> {
-  const service = subresource === "file" || subresource === "queue" ? STORAGE_PRIVATE_PATH[subresource] : STORAGE_PRIVATE_PATH.blob;
+export function checkStorage(world: World, vmId: string, accountId: string, port: number, subresource: "blob" | "file" | "queue" | "table" = "blob"): Result<InboundCheck> {
+  const service = subresource === "file" || subresource === "queue" || subresource === "table" ? STORAGE_PRIVATE_PATH[subresource] : STORAGE_PRIVATE_PATH.blob;
   const account = world.resources[canonicalId(accountId)];
   if (!account || account.type.toLowerCase() !== "microsoft.storage/storageaccounts") {
     return failure([{ step: "parse", ok: true }], {
@@ -406,7 +407,7 @@ function blobZoneAnswer(
   return { address };
 }
 
-function blobPrivateEndpoint(world: World, sourceSubnet: Resource, accountId: string, group: "blob" | "file" | "queue"): { resource: Resource; ip: string; subnet: Resource } | null {
+function blobPrivateEndpoint(world: World, sourceSubnet: Resource, accountId: string, group: "blob" | "file" | "queue" | "table"): { resource: Resource; ip: string; subnet: Resource } | null {
   const sourceVnet = parentVirtualNetwork(world, sourceSubnet);
   if (!sourceVnet) return null;
   const matches: { resource: Resource; ip: string; subnet: Resource; same: boolean }[] = [];

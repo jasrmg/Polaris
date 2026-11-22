@@ -958,6 +958,47 @@ describe("inbound internet check", () => {
     assert.equal(again.error?.code, "ResourceAlreadyExists");
   });
 
+  it("uses a table private endpoint only for the table check", () => {
+    const { world, vmId, subnetId } = linkedWorld();
+    const account = must(createResource(world, {
+      armType: "Microsoft.Storage/storageAccounts",
+      name: "sttable001",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      sku: { name: "Standard_LRS" },
+      kind: "StorageV2",
+    }));
+    const accountId = Object.values(account.resources).find((resource) => resource.name === "sttable001")!.id;
+    const blocked = must(addInternetRoute(account, subnetId, {
+      tableName: "rt-app",
+      routeName: "drop-internet",
+      nextHop: "None",
+      addressPrefix: "0.0.0.0/0",
+    }));
+    const withTable = must(addStoragePrivateEndpoint(blocked, accountId, subnetId, "pe-st-table", "table"));
+    const withQueue = must(addStoragePrivateEndpoint(withTable, accountId, subnetId, "pe-st-queue", "queue"));
+    const tableEndpoint = Object.values(withQueue.resources).find((resource) => resource.name === "pe-st-table")!;
+    assert.equal(tableEndpoint.properties.privateIPAddress, "10.0.1.5");
+    assert.deepEqual(tableEndpoint.properties.groupIds, ["table"]);
+    const tablePublic = checkStorage(withQueue, vmId, accountId, 443, "table");
+    assert.match(tablePublic.value?.summary ?? "", /Dropped\. routes\/drop-internet/);
+    assert.match(tablePublic.trace.map((line) => line.detail ?? "").join("\n"), /sttable001\.table\.core\.windows\.net resolves to the public address/);
+    const queueZoneOnly = must(addStoragePrivateDns(withQueue, accountId, "queue"));
+    const tableIgnoresQueue = checkStorage(queueZoneOnly, vmId, accountId, 443, "table");
+    assert.match(tableIgnoresQueue.value?.summary ?? "", /Dropped\. routes\/drop-internet/);
+    const published = must(addStoragePrivateDns(queueZoneOnly, accountId, "table"));
+    const open = checkStorage(published, vmId, accountId, 443, "table");
+    assert.equal(open.value?.allowed, true, open.error?.message);
+    assert.match(open.value?.summary ?? "", /pe-st-table/);
+    assert.match(open.trace.map((line) => line.detail ?? "").join("\n"), /privatelink\.table\.core\.windows\.net resolves to 10\.0\.1\.5/);
+    const queueOpen = checkStorage(published, vmId, accountId, 443, "queue");
+    assert.equal(queueOpen.value?.allowed, true);
+    assert.match(queueOpen.value?.summary ?? "", /pe-st-queue/);
+    const again = addStoragePrivateEndpoint(published, accountId, subnetId, "pe-st-table-2", "table");
+    assert.equal(again.ok, false);
+    assert.equal(again.error?.code, "ResourceAlreadyExists");
+  });
+
   it("follows a second appliance, then stops on a loop or the eighth hop", () => {
     const { world, vmId, subnetId } = linkedWorld();
     const hop = (current: World, index: number) => {
