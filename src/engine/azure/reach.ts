@@ -222,10 +222,14 @@ export function checkOutboundInternet(world: World, vmId: string, port: number):
   return finishOutbound(world, trace, subnet, verdict(matched), LEARN.nsgOverview, port);
 }
 
-export function checkStorage(world: World, vmId: string, accountId: string, port: number, subresource: "blob" | "file" = "blob"): Result<InboundCheck> {
-  const service = subresource === "file"
-    ? { group: "file" as const, zone: "privatelink.file.core.windows.net", host: "file.core.windows.net", label: "file" }
-    : { group: "blob" as const, zone: "privatelink.blob.core.windows.net", host: "blob.core.windows.net", label: "blob" };
+const STORAGE_PRIVATE_PATH = {
+  blob: { group: "blob" as const, zone: "privatelink.blob.core.windows.net", host: "blob.core.windows.net", label: "blob" },
+  file: { group: "file" as const, zone: "privatelink.file.core.windows.net", host: "file.core.windows.net", label: "file" },
+  queue: { group: "queue" as const, zone: "privatelink.queue.core.windows.net", host: "queue.core.windows.net", label: "queue" },
+};
+
+export function checkStorage(world: World, vmId: string, accountId: string, port: number, subresource: "blob" | "file" | "queue" = "blob"): Result<InboundCheck> {
+  const service = subresource === "file" || subresource === "queue" ? STORAGE_PRIVATE_PATH[subresource] : STORAGE_PRIVATE_PATH.blob;
   const account = world.resources[canonicalId(accountId)];
   if (!account || account.type.toLowerCase() !== "microsoft.storage/storageaccounts") {
     return failure([{ step: "parse", ok: true }], {
@@ -402,7 +406,7 @@ function blobZoneAnswer(
   return { address };
 }
 
-function blobPrivateEndpoint(world: World, sourceSubnet: Resource, accountId: string, group: "blob" | "file"): { resource: Resource; ip: string; subnet: Resource } | null {
+function blobPrivateEndpoint(world: World, sourceSubnet: Resource, accountId: string, group: "blob" | "file" | "queue"): { resource: Resource; ip: string; subnet: Resource } | null {
   const sourceVnet = parentVirtualNetwork(world, sourceSubnet);
   if (!sourceVnet) return null;
   const matches: { resource: Resource; ip: string; subnet: Resource; same: boolean }[] = [];

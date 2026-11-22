@@ -917,6 +917,47 @@ describe("inbound internet check", () => {
     assert.equal(again.error?.code, "ResourceAlreadyExists");
   });
 
+  it("uses a queue private endpoint only for the queue check", () => {
+    const { world, vmId, subnetId } = linkedWorld();
+    const account = must(createResource(world, {
+      armType: "Microsoft.Storage/storageAccounts",
+      name: "stqueue001",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      sku: { name: "Standard_LRS" },
+      kind: "StorageV2",
+    }));
+    const accountId = Object.values(account.resources).find((resource) => resource.name === "stqueue001")!.id;
+    const blocked = must(addInternetRoute(account, subnetId, {
+      tableName: "rt-app",
+      routeName: "drop-internet",
+      nextHop: "None",
+      addressPrefix: "0.0.0.0/0",
+    }));
+    const withQueue = must(addStoragePrivateEndpoint(blocked, accountId, subnetId, "pe-st-queue", "queue"));
+    const withFile = must(addStoragePrivateEndpoint(withQueue, accountId, subnetId, "pe-st-file", "file"));
+    const queueEndpoint = Object.values(withFile.resources).find((resource) => resource.name === "pe-st-queue")!;
+    assert.equal(queueEndpoint.properties.privateIPAddress, "10.0.1.5");
+    assert.deepEqual(queueEndpoint.properties.groupIds, ["queue"]);
+    const queuePublic = checkStorage(withFile, vmId, accountId, 443, "queue");
+    assert.match(queuePublic.value?.summary ?? "", /Dropped\. routes\/drop-internet/);
+    assert.match(queuePublic.trace.map((line) => line.detail ?? "").join("\n"), /stqueue001\.queue\.core\.windows\.net resolves to the public address/);
+    const fileZoneOnly = must(addStoragePrivateDns(withFile, accountId, "file"));
+    const queueIgnoresFile = checkStorage(fileZoneOnly, vmId, accountId, 443, "queue");
+    assert.match(queueIgnoresFile.value?.summary ?? "", /Dropped\. routes\/drop-internet/);
+    const published = must(addStoragePrivateDns(fileZoneOnly, accountId, "queue"));
+    const open = checkStorage(published, vmId, accountId, 443, "queue");
+    assert.equal(open.value?.allowed, true, open.error?.message);
+    assert.match(open.value?.summary ?? "", /pe-st-queue/);
+    assert.match(open.trace.map((line) => line.detail ?? "").join("\n"), /privatelink\.queue\.core\.windows\.net resolves to 10\.0\.1\.5/);
+    const fileOpen = checkStorage(published, vmId, accountId, 445, "file");
+    assert.equal(fileOpen.value?.allowed, true);
+    assert.match(fileOpen.value?.summary ?? "", /pe-st-file/);
+    const again = addStoragePrivateEndpoint(published, accountId, subnetId, "pe-st-queue-2", "queue");
+    assert.equal(again.ok, false);
+    assert.equal(again.error?.code, "ResourceAlreadyExists");
+  });
+
   it("follows a second appliance, then stops on a loop or the eighth hop", () => {
     const { world, vmId, subnetId } = linkedWorld();
     const hop = (current: World, index: number) => {
