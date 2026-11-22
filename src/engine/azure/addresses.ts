@@ -44,7 +44,10 @@ function privateIpsInSubnet(world: World, subnet: Resource | null): Map<string, 
     const home = typeof endpoint.properties.subnetId === "string" ? endpoint.properties.subnetId : "";
     if (canonicalId(home) !== canonicalId(subnet.id)) continue;
     const ip = endpoint.properties.privateIPAddress;
-    if (typeof ip === "string" && ip) taken.add(ip);
+    if (typeof ip === "string" && ip) {
+      taken.add(ip);
+      assigned.set(canonicalId(endpoint.id), ip);
+    }
   }
   for (const nic of nics) {
     if (assigned.has(canonicalId(nic.id))) continue;

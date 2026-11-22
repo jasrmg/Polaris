@@ -15,6 +15,7 @@ import {
   setStorageFirewall,
   addStoragePrivateEndpoint,
   addBlobPrivateDns,
+  addStoragePrivateDns,
   associateNicSecurityGroup,
   attachNetworkInterface,
   attachPublicIp,
@@ -872,6 +873,48 @@ describe("inbound internet check", () => {
     assert.equal(checked.value?.allowed, true, checked.value?.summary);
     assert.match(checked.value?.summary ?? "", /pe-peer/);
     assert.match(checked.trace.map((line) => line.detail ?? "").join("\n"), /does not override/);
+  });
+
+  it("uses a file private endpoint only for the file check", () => {
+    const { world, vmId, subnetId } = linkedWorld();
+    const account = must(createResource(world, {
+      armType: "Microsoft.Storage/storageAccounts",
+      name: "stfile001",
+      resourceGroup: "rg-demo",
+      location: "southeastasia",
+      sku: { name: "Standard_LRS" },
+      kind: "StorageV2",
+    }));
+    const accountId = Object.values(account.resources).find((resource) => resource.name === "stfile001")!.id;
+    const blocked = must(addInternetRoute(account, subnetId, {
+      tableName: "rt-app",
+      routeName: "drop-internet",
+      nextHop: "None",
+      addressPrefix: "0.0.0.0/0",
+    }));
+    const withFile = must(addStoragePrivateEndpoint(blocked, accountId, subnetId, "pe-st-file", "file"));
+    const withBlob = must(addStoragePrivateEndpoint(withFile, accountId, subnetId, "pe-st-blob", "blob"));
+    const fileEndpoint = Object.values(withBlob.resources).find((resource) => resource.name === "pe-st-file")!;
+    const blobEndpoint = Object.values(withBlob.resources).find((resource) => resource.name === "pe-st-blob")!;
+    assert.equal(fileEndpoint.properties.privateIPAddress, "10.0.1.5");
+    assert.equal(blobEndpoint.properties.privateIPAddress, "10.0.1.6");
+    const filePublic = checkStorage(withBlob, vmId, accountId, 445, "file");
+    assert.match(filePublic.value?.summary ?? "", /Dropped\. routes\/drop-internet/);
+    assert.match(filePublic.trace.map((line) => line.detail ?? "").join("\n"), /stfile001\.file\.core\.windows\.net resolves to the public address/);
+    const blobZoneOnly = must(addBlobPrivateDns(withBlob, accountId));
+    const fileIgnoresBlob = checkStorage(blobZoneOnly, vmId, accountId, 445, "file");
+    assert.match(fileIgnoresBlob.value?.summary ?? "", /Dropped\. routes\/drop-internet/);
+    const published = must(addStoragePrivateDns(blobZoneOnly, accountId, "file"));
+    const open = checkStorage(published, vmId, accountId, 445, "file");
+    assert.equal(open.value?.allowed, true, open.error?.message);
+    assert.match(open.value?.summary ?? "", /pe-st-file/);
+    assert.match(open.trace.map((line) => line.detail ?? "").join("\n"), /privatelink\.file\.core\.windows\.net resolves to 10\.0\.1\.5/);
+    const blobOpen = checkStorage(published, vmId, accountId, 443);
+    assert.equal(blobOpen.value?.allowed, true);
+    assert.match(blobOpen.value?.summary ?? "", /pe-st-blob/);
+    const again = addStoragePrivateEndpoint(published, accountId, subnetId, "pe-st-file-2", "file");
+    assert.equal(again.ok, false);
+    assert.equal(again.error?.code, "ResourceAlreadyExists");
   });
 
   it("follows a second appliance, then stops on a loop or the eighth hop", () => {

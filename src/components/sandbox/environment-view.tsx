@@ -156,7 +156,9 @@ function linkLines(resource: Resource, resources: Resource[], world: World): str
   if (typeIs(resource, "microsoft.network/privateendpoints")) {
     const target = typeof resource.properties.privateLinkServiceId === "string" ? named(resources, resource.properties.privateLinkServiceId) : "storage";
     const ip = typeof resource.properties.privateIPAddress === "string" ? resource.properties.privateIPAddress : "an address";
-    lines.push(`Blob private endpoint for ${target} at ${ip}. Connection Approved.`);
+    const groups = resource.properties.groupIds;
+    const label = Array.isArray(groups) && groups.includes("file") ? "File" : "Blob";
+    lines.push(`${label} private endpoint for ${target} at ${ip}. Connection Approved.`);
   }
   const rules = resource.properties.securityRules;
   if (!Array.isArray(rules)) return lines;
@@ -379,7 +381,14 @@ export function EnvironmentView() {
   function addBlobPrivateEndpoint(accountId: string, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    void run((engine, current) => engine.addStoragePrivateEndpoint(current, accountId, String(data.get("subnet") ?? ""), String(data.get("name") ?? "")));
+    const service = data.get("service") === "file" ? "file" : "blob";
+    void run((engine, current) => engine.addStoragePrivateEndpoint(current, accountId, String(data.get("subnet") ?? ""), String(data.get("name") ?? ""), service));
+  }
+
+  function addPrivateDns(accountId: string, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const service = new FormData(event.currentTarget).get("service") === "file" ? "file" : "blob";
+    void run((engine, current) => engine.addStoragePrivateDns(current, accountId, service));
   }
 
   function saveStorageFirewall(accountId: string, event: FormEvent<HTMLFormElement>) {
@@ -396,7 +405,8 @@ export function EnvironmentView() {
     event.preventDefault();
     if (!session.engine || !session.world) return;
     const data = new FormData(event.currentTarget);
-    const result = session.engine.checkStorage(session.world, vmId, String(data.get("account") ?? ""), Number(data.get("port")));
+    const service = data.get("service") === "file" ? "file" : "blob";
+    const result = session.engine.checkStorage(session.world, vmId, String(data.get("account") ?? ""), Number(data.get("port")), service);
     if (!result.ok || !result.value) {
       setError(result.error ?? { code: "Failed", message: "The check could not run.", step: "validate" });
       return;
@@ -659,11 +669,18 @@ export function EnvironmentView() {
                                 <p className="text-sm text-muted-foreground">Create a storage account to check one.</p>
                               ) : (
                                 <form className="grid gap-2" onSubmit={(event) => checkStorageAccount(resource.id, event)}>
-                                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_auto] sm:items-end">
+                                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_8rem_auto] sm:items-end">
                                     <label className="grid min-w-0 gap-1 text-sm">
                                       To a storage account
                                       <select name="account" className={selectClass} defaultValue={storageAccounts[0]?.id}>
                                         {storageAccounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.location}</option>)}
+                                      </select>
+                                    </label>
+                                    <label className="grid min-w-0 gap-1 text-sm">
+                                      Service
+                                      <select name="service" className={selectClass} defaultValue="blob">
+                                        <option value="blob">blob</option>
+                                        <option value="file">file</option>
                                       </select>
                                     </label>
                                     <label className="grid min-w-0 gap-1 text-sm">
@@ -673,7 +690,7 @@ export function EnvironmentView() {
                                     <Button type="submit" size="sm">Check</Button>
                                   </div>
                                   <p className="text-xs text-muted-foreground">
-                                    TCP from this virtual machine to the storage account. The network interface is checked first. An approved blob private endpoint is used when privatelink.blob.core.windows.net is linked to this virtual network and has an A record for the storage account. Otherwise the name resolves to the public address. Network policies stay disabled, so a user route does not override the private address. Without that private address, Microsoft.Storage on this subnet uses a service endpoint route, and a user route does not override it. The service keeps its public address. The sandbox does not list the service prefixes. Microsoft.Storage covers this region and its pair. When the storage firewall default action is Deny, this subnet must be a virtual network rule. A service endpoint policy is not part of this check.
+                                    TCP from this virtual machine to the storage account. The network interface is checked first. Blob and file are separate. An approved private endpoint for the selected service is used when its private DNS zone is linked to this virtual network and has an A record for the storage account. Blob uses privatelink.blob.core.windows.net. File uses privatelink.file.core.windows.net. Otherwise the name resolves to the public address. Network policies stay disabled, so a user route does not override the private address. Without that private address, Microsoft.Storage on this subnet uses a service endpoint route, and a user route does not override it. The service keeps its public address. The sandbox does not list the service prefixes. Microsoft.Storage covers this region and its pair. When the storage firewall default action is Deny, this subnet must be a virtual network rule. A service endpoint policy is not part of this check.
                                   </p>
                                   {checks[`${resource.id}:storage`] && (
                                     <div className="rounded-lg border p-3 text-sm">
@@ -1006,20 +1023,32 @@ export function EnvironmentView() {
                                       {allSubnets.map((subnet) => <option key={subnet.id} value={subnet.id}>{subnet.name}</option>)}
                                     </select>
                                   </label>
+                                  <label className="grid min-w-0 gap-1 text-sm">
+                                    Target sub-resource
+                                    <select name="service" className={selectClass} defaultValue="blob">
+                                      <option value="blob">blob</option>
+                                      <option value="file">file</option>
+                                    </select>
+                                  </label>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  Blob only. The endpoint takes a private address from the subnet and the connection is Approved. This does not turn off the public endpoint. Network policies stay disabled, so a user route does not override the address, and the subnet network security group is not applied to the endpoint. The private DNS zone is a separate step.
+                                  Blob and file each need their own endpoint. The endpoint takes a private address from the subnet and the connection is Approved. This does not turn off the public endpoint. Network policies stay disabled, so a user route does not override the address, and the subnet network security group is not applied to the endpoint. The private DNS zone is a separate step.
                                 </p>
                                 <Button type="submit" size="sm" className="w-fit">Add private endpoint</Button>
                               </form>
-                              <div className="grid gap-2">
+                              <form className="grid gap-2" onSubmit={(event) => addPrivateDns(resource.id, event)}>
+                                <label className="grid min-w-0 gap-1 text-sm">
+                                  Private DNS zone
+                                  <select name="service" className={selectClass} defaultValue="blob">
+                                    <option value="blob">blob · privatelink.blob.core.windows.net</option>
+                                    <option value="file">file · privatelink.file.core.windows.net</option>
+                                  </select>
+                                </label>
                                 <p className="text-xs text-muted-foreground">
-                                  Creates privatelink.blob.core.windows.net, links the private endpoint virtual network, and adds an A record for this storage account. The storage check uses the private address only when that zone is linked to the virtual machine virtual network. Otherwise the name resolves to the public address.
+                                  Creates the zone for the selected service, links the private endpoint virtual network, and adds an A record for this storage account. The storage check uses the private address only when that zone is linked to the virtual machine virtual network. Otherwise the name resolves to the public address.
                                 </p>
-                                <Button type="button" size="sm" className="w-fit" onClick={() => void run((engine, current) => engine.addBlobPrivateDns(current, resource.id))}>
-                                  Add blob private DNS
-                                </Button>
-                              </div>
+                                <Button type="submit" size="sm" className="w-fit">Add private DNS</Button>
+                              </form>
                               </>
                             )}
                             </>

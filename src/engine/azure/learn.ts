@@ -33,6 +33,7 @@ export const LEARN = {
   privateDnsRegistration: "https://learn.microsoft.com/en-us/azure/dns/private-dns-autoregistration",
   serviceEndpoint: "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-service-endpoints-overview",
   storageFirewall: "https://learn.microsoft.com/en-us/azure/storage/common/storage-network-security",
+  storagePrivateEndpoint: "https://learn.microsoft.com/en-us/azure/storage/common/storage-private-endpoints",
   privateEndpoint: "https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview",
   privateEndpointDns: "https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-dns",
   rgPortal: "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/manage-resource-groups-portal",

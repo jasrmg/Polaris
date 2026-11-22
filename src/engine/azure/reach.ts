@@ -31,7 +31,7 @@
  * path allows it. An approved blob private endpoint in this virtual network, or a
  * directly peered one, is used instead. Network policies stay disabled, so a
  * user route does not override that private address. The private address is used
- * only when privatelink.blob.core.windows.net is linked to the source virtual
+ * only when the service private DNS zone is linked to the source virtual
  * network and has an A record for the storage account. Otherwise the name
  * resolves to the public address.
  * Sources: docs/research/networking-rules.md sections 1.1–1.4, 1.8, 2.6, and 2.7.
@@ -222,7 +222,10 @@ export function checkOutboundInternet(world: World, vmId: string, port: number):
   return finishOutbound(world, trace, subnet, verdict(matched), LEARN.nsgOverview, port);
 }
 
-export function checkStorage(world: World, vmId: string, accountId: string, port: number): Result<InboundCheck> {
+export function checkStorage(world: World, vmId: string, accountId: string, port: number, subresource: "blob" | "file" = "blob"): Result<InboundCheck> {
+  const service = subresource === "file"
+    ? { group: "file" as const, zone: "privatelink.file.core.windows.net", host: "file.core.windows.net", label: "file" }
+    : { group: "blob" as const, zone: "privatelink.blob.core.windows.net", host: "blob.core.windows.net", label: "blob" };
   const account = world.resources[canonicalId(accountId)];
   if (!account || account.type.toLowerCase() !== "microsoft.storage/storageaccounts") {
     return failure([{ step: "parse", ok: true }], {
@@ -238,14 +241,14 @@ export function checkStorage(world: World, vmId: string, accountId: string, port
   const { trace, vm, nic, subnet } = opened;
   trace.push({ step: "validate", ok: true, detail: `${vm.name} uses ${nic.name}. Destination ${account.name}, port ${port}.` });
   const sourceVnet = parentVirtualNetwork(world, subnet);
-  const endpoint = blobPrivateEndpoint(world, subnet, account.id);
-  const dns = sourceVnet ? blobZoneAnswer(world, sourceVnet, account.name) : null;
+  const endpoint = blobPrivateEndpoint(world, subnet, account.id, service.group);
+  const dns = sourceVnet ? blobZoneAnswer(world, sourceVnet, account.name, service) : null;
   if (dns && "error" in dns) return failure(trace, dns.error);
   if (dns && endpoint && dns.address === endpoint.ip && sourceVnet) {
     trace.push({
       step: "apply",
       ok: true,
-      detail: `${account.name}.privatelink.blob.core.windows.net resolves to ${dns.address}. Private DNS zone privatelink.blob.core.windows.net, linked to ${sourceVnet.name}.`,
+      detail: `${account.name}.${service.zone} resolves to ${dns.address}. Private DNS zone ${service.zone}, linked to ${sourceVnet.name}.`,
     });
     return privateStoragePath(world, trace, nic, subnet, account, endpoint, port);
   }
@@ -253,7 +256,7 @@ export function checkStorage(world: World, vmId: string, accountId: string, port
     trace.push({
       step: "apply",
       ok: true,
-      detail: `${account.name}.blob.core.windows.net resolves to the public address. privatelink.blob.core.windows.net is not linked to ${sourceVnet.name}.`,
+      detail: `${account.name}.${service.host} resolves to the public address. ${service.zone} is not linked to ${sourceVnet.name}.`,
     });
   }
   const nicNsg = attachedNsg(world, nic);
@@ -366,10 +369,15 @@ function privateStoragePath(
   return answered(trace, true, `${account.name} is reachable at ${endpoint.ip} through ${endpoint.resource.name}. The connection is Approved.`, LEARN.privateEndpoint);
 }
 
-function blobZoneAnswer(world: World, sourceVnet: Resource, accountName: string): { address: string } | { error: EngineError } | null {
+function blobZoneAnswer(
+  world: World,
+  sourceVnet: Resource,
+  accountName: string,
+  service: { zone: string; label: string },
+): { address: string } | { error: EngineError } | null {
   const zone = Object.values(world.resources).find((resource) =>
     resource.type.toLowerCase() === "microsoft.network/privatednszones" &&
-    resource.name.toLowerCase() === "privatelink.blob.core.windows.net" &&
+    resource.name.toLowerCase() === service.zone &&
     zoneLinkedTo(world, resource, sourceVnet),
   );
   if (!zone) return null;
@@ -384,17 +392,17 @@ function blobZoneAnswer(world: World, sourceVnet: Resource, accountName: string)
     return {
       error: {
         code: "PrivateZoneNxDomain",
-        message: "Private DNS zone privatelink.blob.core.windows.net has no record for this name, so the name did not resolve. (sandbox wording)",
+        message: `Private DNS zone ${service.zone} has no record for this name, so the name did not resolve. (sandbox wording)`,
         step: "validate",
         learnUrl: LEARN.privateEndpointDns,
-        next: "Add the blob private DNS zone for this storage account.",
+        next: `Add the ${service.label} private DNS zone for this storage account.`,
       },
     };
   }
   return { address };
 }
 
-function blobPrivateEndpoint(world: World, sourceSubnet: Resource, accountId: string): { resource: Resource; ip: string; subnet: Resource } | null {
+function blobPrivateEndpoint(world: World, sourceSubnet: Resource, accountId: string, group: "blob" | "file"): { resource: Resource; ip: string; subnet: Resource } | null {
   const sourceVnet = parentVirtualNetwork(world, sourceSubnet);
   if (!sourceVnet) return null;
   const matches: { resource: Resource; ip: string; subnet: Resource; same: boolean }[] = [];
@@ -403,7 +411,7 @@ function blobPrivateEndpoint(world: World, sourceSubnet: Resource, accountId: st
     const target = resource.properties.privateLinkServiceId;
     if (typeof target !== "string" || canonicalId(target) !== canonicalId(accountId)) continue;
     const groups = resource.properties.groupIds;
-    if (!Array.isArray(groups) || !groups.includes("blob")) continue;
+    if (!Array.isArray(groups) || !groups.includes(group)) continue;
     const state = resource.properties.privateLinkServiceConnectionState;
     const status = state && typeof state === "object" && typeof (state as { status?: unknown }).status === "string" ? (state as { status: string }).status : "Approved";
     if (status !== "Approved") continue;
