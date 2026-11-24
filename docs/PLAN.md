@@ -40,7 +40,7 @@ npm test                                     # engine rules (Node's test runner,
 
 | File | Purpose | Exists |
 |---|---|---|
-| `README.md` | What the project is, how to run it, how to add an entry | yes |
+| `README.md` | What the project is, how it works (screenshots in `docs/images/`), how to run it, how to add an entry | yes |
 | `AGENTS.md` | Rules for AI agents (Next.js warning plus a pointer to this plan) | yes |
 | `docs/PLAN.md` | This file: vision, rules, architecture, roadmap, status | yes |
 | `docs/BACKLOG.md` | Azure services not yet in the catalog, in priority order | yes (seed list) |

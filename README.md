@@ -4,8 +4,8 @@ A free, browser-only place to learn and try out Azure. Nothing is hosted, nothin
 
 Polaris has two parts:
 
-- **Atlas (built):** a catalog of Azure resources. Each entry has a plain-English definition, an analogy, when to use it, prerequisites, example configuration (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal and a shareable page.
-- **Sandbox (eight create forms):** create a resource group, virtual network, subnet, public IP address, network security group, network interface, virtual machine, or storage account in a simulated tenant. From My Environment you can attach a network interface to a virtual machine, a public IP to that interface, a network security group to a subnet with one inbound rule, a network security group to a network interface, and one TCP rule on a group that already exists, for internet traffic or virtual-network traffic. From a subnet you can add a route. 0.0.0.0/0 changes outbound internet traffic after the security groups allow it. A longer prefix can decide an address inside the virtual network. Two virtual networks can be peered, and the address check can reach a private address in the peered network. A route can send traffic to a virtual appliance. The check follows that chain for up to 8 hops. Microsoft.Storage on the subnet uses a service endpoint route, and a user route does not override it. An approved blob private endpoint is used when privatelink.blob.core.windows.net is linked to the virtual machine virtual network. A file check uses its own endpoint when privatelink.file.core.windows.net is linked. A queue check uses its own endpoint when privatelink.queue.core.windows.net is linked. A table check uses its own endpoint when privatelink.table.core.windows.net is linked. Otherwise the storage name resolves to the public address. If its subnet has no winning user route, the virtual network system route can deliver the address. Forwarded traffic across a peering needs both links to allow it. Gateway transit can be recorded on a peering and does not carry traffic. The address check also accepts a virtual machine name in that virtual network. A linked private DNS zone is checked first. Auto-registration can add a record for a running virtual machine. On the virtual machine you can check one new inbound TCP connection from the internet, one new outbound TCP connection to the internet, and one new TCP connection to a private address in the same virtual network. A network interface shows the private address the sandbox assigned. A refusal on these pages names the rule and, when the page can fix it, what to do next. The engine also evaluates RBAC and deny/audit policy. A simulated Cloud Shell that runs `az` is still to come. The engine is in `src/engine/`. Open it from **My Environment**.
+- **Atlas:** a catalog of Azure resources. Each entry has a plain-English definition, an analogy, when to use it, prerequisites, example configuration (Portal, Azure CLI, PowerShell, Bicep, ARM), exam notes, a modal, and a shareable page.
+- **Sandbox:** a simulated subscription. You can create eight resource types, link them, and ask the engine what a connection would do. State stays in the browser. A simulated Cloud Shell that runs `az` is still to come.
 
 Every fact in the catalog is checked against Microsoft Learn or other official Microsoft documentation.
 
@@ -13,9 +13,53 @@ Every fact in the catalog is checked against Microsoft Learn or other official M
 
 > **Working on this project (human or AI): read [`docs/PLAN.md`](docs/PLAN.md) first.** Section 0 has the current state, the next step, the rules and a map of the docs.
 
+## How it works
+
+### 1. Browse the catalog
+
+The home page is the atlas. The hierarchy (tenant, management group, subscription, resource group, resource) filters the list below it. Search covers names, types, and definitions.
+
+![Polaris home page. The heading is "Learn what every Azure resource is for." Below it, the Azure hierarchy runs from Tenant to Resource.](docs/images/atlas-home.png)
+
+Filters narrow the 43 entries by service area, kind, exam tag, and tier.
+
+![The resource catalog, filtered to all 43 entries, with Tenant and User cards visible.](docs/images/atlas-catalog.png)
+
+### 2. Open an entry
+
+A card opens a shareable page (and, from the catalog, a modal with the same content). The page says what the resource is, when to use it, what it is not for, and which other entries it depends on. Further tabs cover prerequisites, configuration examples, dependencies, and exam notes. **Try it** is enabled only for the resources the sandbox can create.
+
+![The Virtual Machine catalog page: definition, analogy, when to use it, and related resources.](docs/images/resource-virtual-machine.png)
+
+### 3. Try it in the sandbox
+
+**Try it** opens a create form. The labels follow the portal. The engine runs in the browser and writes the world to `localStorage`. Catalog pages do not load the engine. Nothing on these pages touches a real Azure subscription.
+
+![The create form for a resource group, with the name rg-polaris-demo and region Southeast Asia.](docs/images/sandbox-create.png)
+
+**My Environment** (`/sandbox/`) is the simulated subscription. You are signed in as Owner. Resources you create show up here, and the forms on this page are where links, routes, DNS, and connection checks live.
+
+![My Environment after creating the resource group rg-polaris-demo and the virtual network vnet-sea.](docs/images/sandbox-environment.png)
+
+Try it is on for a resource group, virtual network, subnet, public IP address, network security group, network interface, virtual machine, and storage account. The network interface has no catalog page of its own. The other catalog entries stay documentation until their forms are added.
+
+From My Environment you can also:
+
+- Attach a network interface to a virtual machine, and a public IP to that interface.
+- Associate a network security group with a subnet or a network interface, and add one TCP rule on a group that already exists, for internet traffic or virtual-network traffic.
+- Add a route on a subnet. `0.0.0.0/0` changes outbound internet traffic after the security groups allow it. A longer prefix can decide an address inside the virtual network.
+- Peer two virtual networks. The address check can reach a private address in the peered network. Forwarded traffic needs both links to allow it. Gateway transit can be recorded and does not carry traffic.
+- Send traffic to a virtual appliance. The check follows that chain for up to 8 hops.
+- Use a Microsoft.Storage service endpoint on the subnet. A user route does not override it.
+- Use an approved private endpoint for blob, file, queue, or table when the matching `privatelink` zone is linked to the virtual machine's virtual network. Otherwise the storage name resolves to the public address.
+- Resolve a virtual machine name in that virtual network. A linked private DNS zone is checked first. Auto-registration can add a record for a running virtual machine.
+- On a virtual machine, check one new inbound TCP connection from the internet, one new outbound TCP connection to the internet, and one new TCP connection to a private address in the same virtual network.
+
+A refusal names the rule and, when the page can fix it, what to do next. The engine also evaluates Azure RBAC and five built-in deny and audit policies. Each network interface shows the private address the sandbox assigned.
+
 ## Status
 
-43 entries, including the directory and RBAC entries and Tag, Resource lock, Policy definition, and Policy assignment. The sandbox design is in `docs/SIMULATOR.md`, `docs/RBAC.md` and `docs/CLOUDSHELL.md` (evidence in `docs/research/`). The engine in `src/engine/` evaluates Azure RBAC and five built-in policies. Try it is on for seven catalog entries, and a network interface can be created from My Environment. Those pieces can be linked there, including a network security group on a network interface and one TCP rule on a group that already exists, for internet traffic or virtual-network traffic. A subnet can take a route. 0.0.0.0/0 can drop outbound internet traffic after the security groups allow it, and a longer prefix can decide an address inside the virtual network. A direct peering can extend that check into the peered virtual network. A virtual appliance route can send traffic to a network interface. The check follows that chain for up to 8 hops. Microsoft.Storage on the subnet uses a service endpoint route, and a user route does not override it. An approved blob private endpoint is used when privatelink.blob.core.windows.net is linked to the virtual machine virtual network. A file check uses its own endpoint when privatelink.file.core.windows.net is linked. A queue check uses its own endpoint when privatelink.queue.core.windows.net is linked. A table check uses its own endpoint when privatelink.table.core.windows.net is linked. Otherwise the storage name resolves to the public address. If its subnet has no winning user route, the system route can deliver the address, and forwarded traffic across a peering needs both links to allow it. Gateway transit can be recorded on a peering and does not carry traffic. The address check also accepts a virtual machine name in that virtual network. A linked private DNS zone is checked first. Auto-registration can add a record for a running virtual machine. A virtual machine can be checked for one inbound internet connection, one outbound connection to the internet, and one connection to a private address in the same virtual network. Each network interface has a private address. The other catalog entries stay documentation until their forms are added. See the roadmap in `docs/PLAN.md`.
+43 entries, including the directory and RBAC entries and Tag, Resource lock, Policy definition, and Policy assignment. The sandbox design is in `docs/SIMULATOR.md`, `docs/RBAC.md` and `docs/CLOUDSHELL.md` (evidence in `docs/research/`). The engine in `src/engine/` evaluates Azure RBAC and five built-in policies. See the roadmap in `docs/PLAN.md`.
 
 ## Run it
 
@@ -64,6 +108,7 @@ If the Bicep CLI is not found, `check:snippets` skips the Bicep checks and says 
 | `src/engine/` | In-browser Azure world. Sandbox pages load it with a dynamic import. Catalog pages do not. |
 | `scripts/check-snippets.ts` | The snippet checker |
 | `docs/` | Plan (`PLAN.md`), sandbox design (`SIMULATOR.md`, `RBAC.md`, `CLOUDSHELL.md`), backlog, and `research/` (evidence reports with sources) |
+| `docs/images/` | Screenshots used in this README |
 
 The site is a static export (`output: "export"`), so it can be hosted anywhere that serves files.
 
@@ -81,4 +126,4 @@ Writing rules for code samples inside the TypeScript template literals: no `${}`
 ## Notes for AI agents
 
 - This project uses a Next.js version with breaking changes. See `AGENTS.md`, and read the guide in `node_modules/next/dist/docs/` before using a Next.js API.
-- The owner makes all git commits. Do not commit.
+
